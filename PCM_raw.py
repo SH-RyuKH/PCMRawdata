@@ -72,7 +72,7 @@ class ExcelUploaderApp:
             self.tree.insert("", "end", text=row.name, values=values)
 
         # 트리뷰에서 행 클릭 이벤트 바인딩
-        self.tree.bind("<ButtonRelease-1>", self.show_selected_row)
+        self.tree.bind("<ButtonRelease-1>", self.show_selected_data_in_column_window)
 
         self.tree.pack(fill="both", expand=True)
 
@@ -113,27 +113,58 @@ class ExcelUploaderApp:
         )
         confirm_button.pack(pady=10)
 
-    def show_selected_row(self, event):
-        # 선택한 행의 데이터 가져오기
-        selected_item = self.tree.selection()
-        if selected_item:
-            selected_row_data = self.tree.item(selected_item, "values")
-            self.show_selected_data_in_column_window(selected_row_data)
-
-    def show_selected_data_in_column_window(self, selected_row_data):
+    def show_selected_data_in_column_window(self, event):
         # 선택한 데이터를 열 선택 창에 표시
         if hasattr(self, "column_window"):
             self.column_window.destroy()
 
         self.column_window = tk.Toplevel(self.root)
-        self.column_window.title("열 선택")
+        self.column_window.title("셀 선택")
 
         selected_data_label = tk.Label(self.column_window, text="선택한 데이터:")
         selected_data_label.pack(pady=10)
 
-        for i, value in enumerate(selected_row_data):
-            label = tk.Label(self.column_window, text=f"Column {i+1}: {value}")
-            label.pack()
+        # 선택된 셀의 데이터 가져오기
+        item_id = self.tree.identify("item", event.x, event.y)
+        if item_id:
+            selected_row_data = self.tree.item(item_id, "values")
+            for i, value in enumerate(selected_row_data):
+                label = tk.Label(self.column_window, text=f"Column {i+1}: {value}")
+                label.pack()
+
+            # 선택된 셀만 강조 표시
+            self.tree.tag_configure("selected", background="yellow")
+            self.tree.tag_remove(
+                "selected", self.tree.get_children()
+            )  # 기존에 선택된 셀들의 강조 표시 제거
+            self.tree.tag_add("selected", item_id)
+
+            # 모든 열의 정보 가져오기
+            all_columns = self.tree["columns"]
+
+            # 확인 버튼 클릭 시 선택한 열 표시
+            confirm_button = tk.Button(
+                self.column_window,
+                text="확인",
+                command=lambda: self.show_selected_columns(all_columns),
+            )
+            confirm_button.pack(pady=10)
+
+    def show_selected_columns(self, selected_columns):
+        # 선택한 열에 속하는 모든 데이터 가져오기
+        column_data = self.tree.item("", "values")
+
+        # 열 선택 창에 데이터 표시
+        for selected_column in selected_columns:
+            column_data_label = tk.Label(
+                self.column_window, text=f"전체 데이터 ({selected_column}):"
+            )
+            column_data_label.pack(pady=10)
+
+            for data in column_data:
+                label_text = f"{selected_column}: {data[self.tree['columns'].index(selected_column)]}"
+                label = tk.Label(self.column_window, text=label_text)
+                label.pack()
 
 
 if __name__ == "__main__":
