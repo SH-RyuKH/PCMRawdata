@@ -16,12 +16,10 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtChart import (
     QChart,
     QChartView,
-    QLineSeries,
-    QBarSet,
-    QBarSeries,
-    QValueAxis,
+    QScatterSeries,
 )
 from PyQt5.QtGui import QPainter
+from PyQt5.QtCore import Qt, QPointF
 
 
 class ScatterPlotWindow(QWidget):
@@ -33,20 +31,20 @@ class ScatterPlotWindow(QWidget):
 
         layout = QVBoxLayout(self)
 
-        chart = QChart()
-        series = QLineSeries()
+        self.chart = QChart()
+        self.scatter_series = QScatterSeries()
 
         for i, data in enumerate(column_data):
-            series.append(i, float(data))
+            self.scatter_series.append(i, float(data))
 
-        chart.addSeries(series)
-        chart.createDefaultAxes()
-        chart.setTitle("Scatter Plot")
+        self.chart.addSeries(self.scatter_series)
+        self.chart.createDefaultAxes()
+        self.chart.setTitle("Scatter Plot")
 
-        chart_view = QChartView(chart)
-        chart_view.setRenderHint(QPainter.Antialiasing)
+        self.chart_view = QChartView(self.chart)
+        self.chart_view.setRenderHint(QPainter.Antialiasing)
 
-        layout.addWidget(chart_view)
+        layout.addWidget(self.chart_view)
 
         data_table = QTableWidget(self)
         data_table.setColumnCount(1)
@@ -58,6 +56,71 @@ class ScatterPlotWindow(QWidget):
             data_table.setItem(i, 0, item)
 
         layout.addWidget(data_table)
+
+        self.selected_point_index = None
+        self.data_table = data_table  # 데이터 목록을 인스턴스 변수로 추가
+
+        self.chart_view.mousePressEvent = self.on_mouse_click  # 마우스 클릭 이벤트 연결
+
+    def find_nearest_point(self, pos):
+        # 이전에 선택된 데이터의 하이라이트 제거
+        if self.selected_point_index is not None:
+            for i in range(self.data_table.rowCount()):
+                for j in range(self.data_table.columnCount()):
+                    item = self.data_table.item(i, j)
+                    item.setBackground(Qt.white)
+
+        # 화면 좌표를 차트 플롯 영역 좌표로 변환
+        graph_point = self.chart.mapToValue(pos)
+
+        # x좌표를 반올림해서 가장 가까운 자연수로 변환
+        x_value = round(graph_point.x())
+
+        # ScatterSeries에서 x가 가장 가까운 자연수를 찾기
+        min_distance_x = float("inf")
+        nearest_x_index = None
+
+        for i, point in enumerate(self.scatter_series.points()):
+            distance_x = abs(point.x() - x_value)
+            if distance_x < min_distance_x:
+                min_distance_x = distance_x
+                nearest_x_index = i
+
+        # 선택된 x값에 대응하는 데이터 찾기
+        selected_data = None
+        min_distance_y = float("inf")
+
+        for i in range(self.data_table.rowCount()):
+            item = self.data_table.item(i, 0)
+            y_value = float(item.text())
+
+            distance_y = abs(y_value - graph_point.y())
+            if distance_y < min_distance_y:
+                min_distance_y = distance_y
+                selected_data = (i, y_value)
+
+        if selected_data and nearest_x_index is not None:
+            selected_index, selected_y_value = selected_data
+
+            # 선택한 데이터 행을 초록색으로 하이라이트
+            for j in range(self.data_table.columnCount()):
+                item = self.data_table.item(selected_index, j)
+                item.setBackground(Qt.green)
+
+            # 좌표 표시
+            QMessageBox.information(
+                self,
+                "Clicked Point",
+                f"X: {x_value}, Y: {selected_y_value}",
+            )
+        else:
+            QMessageBox.warning(self, "Point Not Found", "해당하는 점을 찾을 수 없습니다.")
+
+    def on_mouse_click(self, event):
+        pos = event.pos()
+
+        # ScatterSeries에서 가장 가까운 점 찾기
+        self.find_nearest_point(pos)
 
 
 class MainWindow(QMainWindow):
@@ -92,6 +155,8 @@ class MainWindow(QMainWindow):
 
         self.filename = None
         self.df = None
+
+        self.scatter_plot_window = None
 
     def upload_excel(self):
         options = QFileDialog.Options()
@@ -177,8 +242,9 @@ class MainWindow(QMainWindow):
 
         column_data = self.df.iloc[:, selected_col].tolist()
 
-        scatter_plot_window = ScatterPlotWindow(column_data)
-        scatter_plot_window.show()
+        # 인스턴스 변수로 선언한 scatter_plot_window를 사용
+        self.scatter_plot_window = ScatterPlotWindow(column_data)
+        self.scatter_plot_window.show()
 
 
 if __name__ == "__main__":
