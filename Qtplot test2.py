@@ -21,11 +21,13 @@ import pyqtgraph as pg
 
 
 class ScatterPlotWindow(QWidget):
-    def __init__(self, column_data):
+    def __init__(self, column_data, raw_data_window):
         super().__init__()
 
         self.setWindowTitle("Scatter Plot")
         self.setGeometry(200, 200, 800, 600)
+
+        self.raw_data_window = raw_data_window  # PCM Raw Data 창 참조
 
         layout = QVBoxLayout(self)
 
@@ -46,7 +48,7 @@ class ScatterPlotWindow(QWidget):
         self.plot_widget.scene().sigMouseClicked.connect(self.onMouseClicked)
 
         # 선택된 좌표의 X 및 Y 값을 표시할 레이블 추가
-        self.selected_coordinates_label = QLabel("가장 가까운 점: X: ?  Y: ?", self)
+        self.selected_coordinates_label = QLabel("선택한 데이터: X: ?  Y: ?", self)
         layout.addWidget(self.selected_coordinates_label)
 
         # 모든 데이터의 목록을 표시할 목록 위젯 추가
@@ -58,10 +60,27 @@ class ScatterPlotWindow(QWidget):
         self.delete_data_button.clicked.connect(self.delete_selected_data)
         layout.addWidget(self.delete_data_button)
 
+        # "데이터 업데이트" 버튼 추가
+        self.update_data_button = QPushButton("데이터 업데이트", self)
+        self.update_data_button.clicked.connect(self.update_data)
+        layout.addWidget(self.update_data_button)
+
         # 창 설정
         self.data = {"x": list(range(len(column_data))), "y": column_data}
 
+        self.selected_point_index = None
         self.update_data_list()
+
+    def handle_item_double_clicked(self, item):
+        # 데이터 목록에서 더블 클릭한 항목의 인덱스 가져오기
+        selected_index = self.data_list_widget.row(item)
+
+        # 선택한 데이터의 좌표 표시
+        x_value = self.data["x"][selected_index]
+        y_value = self.data["y"][selected_index]
+        self.selected_coordinates_label.setText(
+            f"선택한 데이터: X: {x_value:.2f}  Y: {y_value:.2f}"
+        )
 
     def onMouseClicked(self, event):
         pos = event.scenePos()
@@ -112,10 +131,24 @@ class ScatterPlotWindow(QWidget):
             # 그래프 업데이트
             self.scatter_plot.setData(x=self.data["x"], y=self.data["y"])
 
-            # 클릭한 데이터 보여주기
-            self.show_data(
-                [self.data["x"][self.selected_point_index], selected_y_value]
-            )
+            # 선택한 데이터의 인덱스 초기화
+            self.selected_point_index = None
+
+            # 데이터 목록 업데이트
+            self.update_data_list()
+
+            # 선택한 데이터의 좌표 표시 초기화
+            self.selected_coordinates_label.setText("선택한 데이터: X: ?  Y: ?")
+
+    def update_data(self):
+        # Scatter Plot 창에서 PCM Raw Data 창의 데이터 업데이트 호출
+        self.raw_data_window.update_data()
+
+        # 업데이트된 데이터를 가져와서 그래프와 데이터 목록 업데이트
+        column_data = self.raw_data_window.get_selected_column_data()
+        self.scatter_plot.setData(x=list(range(len(column_data))), y=column_data)
+        self.data = {"x": list(range(len(column_data))), "y": column_data}
+        self.update_data_list()
 
 
 class MainWindow(QMainWindow):
@@ -123,7 +156,7 @@ class MainWindow(QMainWindow):
         super().__init__()
 
         self.setWindowTitle("PCM Raw Data")
-        self.setGeometry(100, 100, 800, 600)
+        self.setGeometry(100, 100, 1600, 1200)
 
         self.central_widget = QWidget(self)
         self.setCentralWidget(self.central_widget)
@@ -185,17 +218,43 @@ class MainWindow(QMainWindow):
         self.table.clear()
 
         if self.df is not None:
+            # "공정조건"이라는 column 추가
+            self.df["공정조건"] = self.create_process_column(self.df.iloc[:, 0])
+
+            # "공정조건" 칼럼을 두 번째 칼럼으로 이동
+            cols = list(self.df.columns)
+            cols = [cols[0], "공정조건"] + cols[1:-1] + [cols[-1]]
+            self.df = self.df[cols]
+
             self.table.setRowCount(self.df.shape[0])
             self.table.setColumnCount(self.df.shape[1])
 
             for i in range(self.df.shape[0]):
                 for j in range(self.df.shape[1]):
-                    if j == 0:  # 첫 번째 열인 경우 int 형식으로 지정
-                        item = QTableWidgetItem(str(int(self.df.iloc[i, j])))
-                    else:
-                        # 나머지 열은 소수점 6자리까지 표시하는 형식으로 지정
-                        item = QTableWidgetItem("{:.6f}".format(self.df.iloc[i, j]))
+                    value = self.df.iloc[i, j]
+                    item = QTableWidgetItem(self.get_formatted_value(value))
                     self.table.setItem(i, j, item)
+
+    def get_formatted_value(self, value):
+        if isinstance(value, int):
+            return str(value)
+        elif isinstance(value, float):
+            return "{:.6f}".format(value)
+        else:
+            return str(value)
+
+    def create_process_column(self, column_data):
+        process_column = []
+        current_group = None
+        alphabet_index = 0
+
+        for value in column_data:
+            if current_group is None or value == 1:
+                current_group = alphabet_index
+                alphabet_index = (alphabet_index + 1) % 26
+            process_column.append(chr(ord("A") + current_group))
+
+        return process_column
 
     def modify_data(self):
         if self.df is not None:
@@ -246,8 +305,24 @@ class MainWindow(QMainWindow):
             column_data = self.df.iloc[:, selected_col].tolist()
 
             # 인스턴스 변수로 선언한 scatter_plot_window를 사용
-            self.scatter_plot_window = ScatterPlotWindow(column_data)
+            self.scatter_plot_window = ScatterPlotWindow(column_data, self)
             self.scatter_plot_window.show()
+
+    def update_data(self):
+        # 파일을 다시 불러와서 데이터 업데이트
+        self.df = pd.read_excel(self.filename)
+
+        # 업데이트된 데이터로 테이블과 차트 업데이트
+        self.update_table()
+        if self.scatter_plot_window:
+            self.scatter_plot_window.update_data_list()
+
+    def get_selected_column_data(self):
+        selected_item = self.table.currentItem()
+        if selected_item is not None:
+            selected_col = selected_item.column()
+            return self.df.iloc[:, selected_col].tolist()
+        return []
 
 
 if __name__ == "__main__":
