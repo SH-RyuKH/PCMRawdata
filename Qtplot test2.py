@@ -18,17 +18,6 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtGui import QPainter
 from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import (
-    QSplitter,
-    QSizePolicy,
-    QVBoxLayout,
-    QPushButton,
-    QDockWidget,
-    QGridLayout,
-    QHBoxLayout,
-)
-
-
 import pyqtgraph as pg
 
 
@@ -218,56 +207,7 @@ class MainWindow(QMainWindow):
         self.chart_button.setSizePolicy(button_size_policy)
         self.chart_button.setFixedSize(button_width, button_height)
         self.chart_button.clicked.connect(self.show_scatter_plot)
-        button_layout.addWidget(self.chart_button)
-
-        # AVG / STD 버튼 추가
-        self.avg_std_button = QPushButton("AVG / STD", self.left_widget)
-        self.avg_std_button.setSizePolicy(button_size_policy)
-        self.avg_std_button.setFixedSize(button_width, button_height)
-        self.avg_std_button.clicked.connect(self.show_avg_std)
-        button_layout.addWidget(self.avg_std_button)
-
-        # 수평 박스 레이아웃을 왼쪽 위젯에 추가
-        self.left_layout.addLayout(button_layout)
-
-        # 위쪽에 테이블 추가
-        self.table = QTableWidget(self.left_widget)
-        self.left_layout.addWidget(self.table)
-
-        # 아래쪽에 테이블 추가
-        self.table_avg_std = QTableWidget(self.left_widget)
-        self.left_layout.addWidget(self.table_avg_std)
-
-        self.central_splitter.addWidget(self.left_widget)
-
-        # 중앙 영역에 추가된 분할 화면 추가
-        self.central_splitter_2 = QSplitter(Qt.Horizontal, self.central_splitter)
-
-        # "3번 분할 화면" 라벨 추가
-        label_3rd_splitter = QLabel("3번 분할 화면", self.central_splitter_2)
-        label_3rd_splitter.setAlignment(Qt.AlignCenter)
-        self.central_splitter_2.addWidget(label_3rd_splitter)
-
-        self.central_splitter.addWidget(self.central_splitter_2)
-
-        # Set initial sizes for the splitters
-        self.central_splitter.setSizes(
-            [self.width() // 3, self.width() // 3, self.width() // 3]
-        )
-        self.central_splitter_2.setSizes(
-            [self.central_splitter_2.width() // 2, self.central_splitter_2.width() // 2]
-        )
-
-        # 우측 영역에 어디에 추가해야 할지를 보여주는 위젯 추가
-        self.right_widget = QWidget(self)
-        self.right_layout = QVBoxLayout(self.right_widget)
-        # Scatter Plot 창을 QDockWidget으로 만들고 오른쪽에 추가
-        self.scatter_plot_window = ScatterPlotWindow([], self)
-        self.scatter_plot_dock = QDockWidget("Scatter Plot", self)
-        self.scatter_plot_dock.setWidget(self.scatter_plot_window)
-        self.addDockWidget(Qt.RightDockWidgetArea, self.scatter_plot_dock)
-
-        self.central_splitter.addWidget(self.right_widget)
+        self.layout.addWidget(self.chart_button)
 
         self.filename = None
         self.df = None
@@ -424,6 +364,87 @@ class MainWindow(QMainWindow):
             selected_col = selected_item.column()
             return self.df.iloc[:, selected_col].tolist()
         return []
+
+    def show_avg_std(self):
+        # 선택한 "공정 조건"에 대한 AVG와 STD 계산
+        selected_col = 1  # "공정 조건"이 위치한 Column (두 번째 Column)
+
+        # "공정 조건" Column의 고유한 값들
+        process_conditions = self.df.iloc[:, selected_col].unique()
+
+        avg_std_values = []
+
+        # 3번째 Column부터 각 Column에 대한 AVG와 STD 계산
+        for col in range(2, self.df.shape[1]):
+            col_header = self.df.columns[col]
+            if col_header.lower() == "item":
+                continue
+
+            # Column 데이터가 숫자인 경우에만 계산
+            if pd.api.types.is_numeric_dtype(self.df.iloc[:, col]):
+                avg_std_values_col = []
+
+                for process_condition in process_conditions:
+                    # "공정 조건"에 해당하는 데이터 필터링
+                    filtered_df = self.df[
+                        self.df.iloc[:, selected_col] == process_condition
+                    ]
+                    col_data_filtered = filtered_df.iloc[:, col]
+
+                    # nan이 아닌 경우에만 계산
+                    if not col_data_filtered.isna().all():
+                        avg = col_data_filtered.mean()
+                        std = col_data_filtered.std()
+                        avg_std_values_col.extend([avg, std])
+
+                avg_std_values.append(avg_std_values_col)
+
+        # if np.any(avg_std_values) and np.any(process_conditions):
+        self.update_avg_std_table(avg_std_values, process_conditions)
+
+    def update_avg_std_table(self, avg_std_values, process_conditions):
+        # 테이블 초기화
+        self.table_avg_std.clear()
+
+        # 열 수 설정
+        num_columns = len(avg_std_values[1]) // 2  # AVG와 STD가 쌍으로 있으므로 나누기 2
+        self.table_avg_std.setColumnCount(num_columns)
+
+        # 헤더 설정
+        header_labels = []
+        for col in range(2, self.df.shape[1]):
+            col_header = self.df.columns[col]
+
+            # "item" 칼럼명인 경우 계산 넘어가기
+            if col_header.lower() == "item":
+                continue
+            if pd.api.types.is_numeric_dtype(self.df.iloc[:, col]):
+                for process_condition in process_conditions:
+                    header_labels.append(f"{col_header} - {process_condition} AVG")
+                    header_labels.append(f"{col_header} - {process_condition} STD")
+
+        self.table_avg_std.setHorizontalHeaderLabels(header_labels)
+
+        # 행 수 설정
+        self.table_avg_std.setRowCount(2)
+
+        # 데이터 채우기
+        for row in range(2):
+            for col in range(num_columns):
+                avg_index = col * 2
+                std_index = col * 2 + 1
+
+                avg_value = avg_std_values[col][avg_index]
+                std_value = avg_std_values[col][std_index]
+
+                self.table_avg_std.setItem(
+                    row,
+                    col,
+                    QTableWidgetItem("{:.2f} ± {:.2f}".format(avg_value, std_value)),
+                )
+
+        # 테이블 크기 조정
+        self.table_avg_std.resizeColumnsToContents()
 
     def show_avg_std(self):
         # 선택한 "공정 조건"에 대한 AVG와 STD 계산
