@@ -1,5 +1,6 @@
 import sys
 import pandas as pd
+import numpy as np
 from PyQt5.QtWidgets import (
     QApplication,
     QMainWindow,
@@ -17,18 +18,28 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtGui import QPainter
 from PyQt5.QtCore import Qt
+from PyQt5.QtWidgets import (
+    QSplitter,
+    QSizePolicy,
+    QVBoxLayout,
+    QPushButton,
+    QDockWidget,
+    QGridLayout,
+    QHBoxLayout,
+)
+
+
 import pyqtgraph as pg
 
 
 class ScatterPlotWindow(QWidget):
-    def __init__(self, selected_col, column_data, raw_data_window):
+    def __init__(self, column_data, raw_data_window):
         super().__init__()
 
         self.setWindowTitle("이상치 제거")
         self.setGeometry(200, 200, 800, 600)
 
         self.raw_data_window = raw_data_window  # PCM Raw Data 창 참조
-        self.MainWindow = MainWindow
 
         layout = QVBoxLayout(self)
 
@@ -54,7 +65,6 @@ class ScatterPlotWindow(QWidget):
 
         # 모든 데이터의 목록을 표시할 목록 위젯 추가
         self.data_list_widget = QListWidget(self)
-        self.data_list_widget.itemClicked.connect(self.handle_item_clicked)
         layout.addWidget(self.data_list_widget)
 
         # "데이터 삭제" 버튼 추가
@@ -64,7 +74,7 @@ class ScatterPlotWindow(QWidget):
 
         # "데이터 업데이트" 버튼 추가
         self.update_data_button = QPushButton("데이터 업데이트", self)
-        self.update_data_button.clicked.connect(self.update_Outlier_data)
+        self.update_data_button.clicked.connect(self.update_data)
         layout.addWidget(self.update_data_button)
 
         # 창 설정
@@ -73,17 +83,16 @@ class ScatterPlotWindow(QWidget):
         self.selected_point_index = None
         self.update_data_list()
 
-    def handle_item_clicked(self, item):
-        # 데이터 목록에서 클릭한 항목의 인덱스 가져오기
+    def handle_item_double_clicked(self, item):
+        # 데이터 목록에서 더블 클릭한 항목의 인덱스 가져오기
         selected_index = self.data_list_widget.row(item)
 
         # 선택한 데이터의 좌표 표시
         x_value = self.data["x"][selected_index]
         y_value = self.data["y"][selected_index]
         self.selected_coordinates_label.setText(
-            f"선택한 데이터: X: {x_value: .1f}  Y: {y_value:.4f}"
+            f"선택한 데이터: X: {x_value:.2f}  Y: {y_value:.2f}"
         )
-        self.selected_point_index = selected_index
 
     def onMouseClicked(self, event):
         pos = event.scenePos()
@@ -122,12 +131,13 @@ class ScatterPlotWindow(QWidget):
         # 목록을 지우고 다시 추가
         self.data_list_widget.clear()
         for x, y in zip(self.data["x"], self.data["y"]):
-            item = QListWidgetItem(f"X: {x:.4f}  Y: {y:.4f}")
+            item = QListWidgetItem(f"X: {x:.2f}  Y: {y:.2f}")
             self.data_list_widget.addItem(item)
 
     def delete_selected_data(self):
         if self.selected_point_index is not None:
             # 선택한 데이터의 y 값을 0으로 만들기
+            selected_y_value = self.data["y"][self.selected_point_index]
             self.data["y"][self.selected_point_index] = 0
 
             # 그래프 업데이트
@@ -142,10 +152,15 @@ class ScatterPlotWindow(QWidget):
             # 선택한 데이터의 좌표 표시 초기화
             self.selected_coordinates_label.setText("선택한 데이터: X: ?  Y: ?")
 
-    def update_Outlier_data(self):
-        #이상치 제거에 있는 데이터를 변경했을때 PCM Raw Data에 있는 데이터를 업데이트해줘
+    def update_data(self):
+        # Scatter Plot 창에서 PCM Raw Data 창의 데이터 업데이트 호출
+        self.raw_data_window.update_data()
 
-        self.close()
+        # 업데이트된 데이터를 가져와서 그래프와 데이터 목록 업데이트
+        column_data = self.raw_data_window.get_selected_column_data()
+        self.scatter_plot.setData(x=list(range(len(column_data))), y=column_data)
+        self.data = {"x": list(range(len(column_data))), "y": column_data}
+        self.update_data_list()
 
 
 class MainWindow(QMainWindow):
@@ -155,42 +170,109 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("PCM Raw Data")
         self.setGeometry(100, 100, 1600, 1200)
 
-        self.central_widget = QWidget(self)
-        self.setCentralWidget(self.central_widget)
+        # Central Widget을 Splitter로 변경
+        self.central_splitter = QSplitter(Qt.Horizontal, self)
+        self.setCentralWidget(self.central_splitter)
 
-        self.layout = QVBoxLayout(self.central_widget)
+        # 버튼 크기 설정
+        button_width = 100
+        button_height = 30
 
-        self.label = QLabel("선택된 파일 없음", self)
-        self.layout.addWidget(self.label)
+        self.scatter_plot_window = None  # ScatterPlotWindow 인스턴스 저장 변수 추가
 
-        self.upload_button = QPushButton("Excel 업로드", self)
+        # 좌측 영역에 현재 내용 보여주는 위젯 추가
+        self.left_widget = QWidget(self)
+        self.left_layout = QVBoxLayout(self.left_widget)
+        self.label = QLabel("선택된 파일 없음", self.left_widget)
+        self.left_layout.addWidget(self.label)
+
+        # 버튼 크기를 조정할 QSizePolicy 설정
+        button_size_policy = QSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
+
+        # 수평 박스 레이아웃 생성
+        button_layout = QHBoxLayout()
+
+        # Excel 업로드 버튼 추가
+        self.upload_button = QPushButton("Excel 업로드", self.left_widget)
+        self.upload_button.setSizePolicy(button_size_policy)
+        self.upload_button.setFixedSize(button_width, button_height)
         self.upload_button.clicked.connect(self.upload_excel)
-        self.layout.addWidget(self.upload_button)
+        button_layout.addWidget(self.upload_button)
 
-        self.table = QTableWidget(self)
-        self.layout.addWidget(self.table)
-
-        self.modify_button = QPushButton("데이터 수정", self)
+        # 데이터 수정 버튼 추가
+        self.modify_button = QPushButton("데이터 수정", self.left_widget)
+        self.modify_button.setSizePolicy(button_size_policy)
+        self.modify_button.setFixedSize(button_width, button_height)
         self.modify_button.clicked.connect(self.modify_data)
-        self.layout.addWidget(self.modify_button)
+        button_layout.addWidget(self.modify_button)
 
-        self.delete_button = QPushButton("데이터 삭제", self)
+        # 데이터 삭제 버튼 추가
+        self.delete_button = QPushButton("데이터 삭제", self.left_widget)
+        self.delete_button.setSizePolicy(button_size_policy)
+        self.delete_button.setFixedSize(button_width, button_height)
         self.delete_button.clicked.connect(self.delete_data)
-        self.layout.addWidget(self.delete_button)
+        button_layout.addWidget(self.delete_button)
 
-        self.chart_button = QPushButton("차트", self)
+        # 차트 버튼 추가
+        self.chart_button = QPushButton("차트", self.left_widget)
+        self.chart_button.setSizePolicy(button_size_policy)
+        self.chart_button.setFixedSize(button_width, button_height)
         self.chart_button.clicked.connect(self.show_scatter_plot)
-        self.layout.addWidget(self.chart_button)
+        button_layout.addWidget(self.chart_button)
+
+        # AVG / STD 버튼 추가
+        self.avg_std_button = QPushButton("AVG / STD", self.left_widget)
+        self.avg_std_button.setSizePolicy(button_size_policy)
+        self.avg_std_button.setFixedSize(button_width, button_height)
+        self.avg_std_button.clicked.connect(self.show_avg_std)
+        button_layout.addWidget(self.avg_std_button)
+
+        # 수평 박스 레이아웃을 왼쪽 위젯에 추가
+        self.left_layout.addLayout(button_layout)
+
+        # 위쪽에 테이블 추가
+        self.table = QTableWidget(self.left_widget)
+        self.left_layout.addWidget(self.table)
+
+        # 아래쪽에 테이블 추가
+        self.table_avg_std = QTableWidget(self.left_widget)
+        self.left_layout.addWidget(self.table_avg_std)
+
+        self.central_splitter.addWidget(self.left_widget)
+
+        # 중앙 영역에 추가된 분할 화면 추가
+        self.central_splitter_2 = QSplitter(Qt.Horizontal, self.central_splitter)
+
+        # "3번 분할 화면" 라벨 추가
+        label_3rd_splitter = QLabel("3번 분할 화면", self.central_splitter_2)
+        label_3rd_splitter.setAlignment(Qt.AlignCenter)
+        self.central_splitter_2.addWidget(label_3rd_splitter)
+
+        self.central_splitter.addWidget(self.central_splitter_2)
+
+        # Set initial sizes for the splitters
+        self.central_splitter.setSizes(
+            [self.width() // 3, self.width() // 3, self.width() // 3]
+        )
+        self.central_splitter_2.setSizes(
+            [self.central_splitter_2.width() // 2, self.central_splitter_2.width() // 2]
+        )
+
+        # 우측 영역에 어디에 추가해야 할지를 보여주는 위젯 추가
+        self.right_widget = QWidget(self)
+        self.right_layout = QVBoxLayout(self.right_widget)
+        # Scatter Plot 창을 QDockWidget으로 만들고 오른쪽에 추가
+        self.scatter_plot_window = ScatterPlotWindow([], self)
+        self.scatter_plot_dock = QDockWidget("Scatter Plot", self)
+        self.scatter_plot_dock.setWidget(self.scatter_plot_window)
+        self.addDockWidget(Qt.RightDockWidgetArea, self.scatter_plot_dock)
+
+        self.central_splitter.addWidget(self.right_widget)
 
         self.filename = None
         self.df = None
 
         self.scatter_plot_window = None
-
-        # 버튼들을 비활성화 상태로 초기화
-        self.modify_button.setEnabled(False)
-        self.delete_button.setEnabled(False)
-        self.chart_button.setEnabled(False)
 
     def upload_excel(self):
         options = QFileDialog.Options()
@@ -214,29 +296,30 @@ class MainWindow(QMainWindow):
                 print(f"Error reading Excel file: {e}")
 
             if self.df is not None:
-                # 데이터가 로드되면 버튼들을 활성화
-                self.modify_button.setEnabled(True)
-                self.delete_button.setEnabled(True)
-                self.chart_button.setEnabled(True)
-
-                self.Add_Column()
                 self.update_table()
-
-    def Add_Column(self):
-        # "공정조건"이라는 column 추가
-        self.df["공정조건"] = self.create_process_column(self.df.iloc[:, 0])
-
-        # "공정조건" 칼럼을 두 번째 칼럼으로 이동
-        cols = list(self.df.columns)
-        cols = [cols[0], "공정조건"] + cols[1:-1]
-        self.df = self.df[cols]
 
     def update_table(self):
         self.table.clear()
 
         if self.df is not None:
+            # "공정조건"이라는 column 추가
+            self.df["공정조건"] = self.create_process_column(self.df.iloc[:, 0])
+
+            # "공정조건" 칼럼을 두 번째 칼럼으로 이동
+            cols = list(self.df.columns)
+            cols = [cols[0], "공정조건"] + cols[1:-1] + [cols[-1]]
+            self.df = self.df[cols]
+
+            # 마지막 칼럼 제거
+            self.df = self.df.iloc[:, :-1]
+
             self.table.setRowCount(self.df.shape[0])
             self.table.setColumnCount(self.df.shape[1])
+
+            # 컬럼 헤더 추가
+            for j in range(self.df.shape[1]):
+                header_item = QTableWidgetItem(self.df.columns[j])
+                self.table.setHorizontalHeaderItem(j, header_item)
 
             for i in range(self.df.shape[0]):
                 for j in range(self.df.shape[1]):
@@ -313,11 +396,27 @@ class MainWindow(QMainWindow):
 
             column_data = self.df.iloc[:, selected_col].tolist()
 
-            # 인스턴스 변수로 선언한 scatter_plot_window를 사용
-            self.scatter_plot_window = ScatterPlotWindow(
-                selected_col, column_data, self
-            )
+            if self.scatter_plot_window is None:
+                # ScatterPlotWindow가 없으면 생성
+                self.scatter_plot_window = ScatterPlotWindow(column_data, self)
+            else:
+                # ScatterPlotWindow가 이미 열려있으면 활성화
+                self.scatter_plot_window.activateWindow()
+
+            # Scatter Plot 창을 QDockWidget으로 만들고 오른쪽에 추가
+            self.scatter_plot_dock.setWidget(self.scatter_plot_window)
+            self.addDockWidget(Qt.RightDockWidgetArea, self.scatter_plot_dock)
+
             self.scatter_plot_window.show()
+
+    def update_data(self):
+        # 파일을 다시 불러와서 데이터 업데이트
+        self.df = pd.read_excel(self.filename)
+
+        # 업데이트된 데이터로 테이블과 차트 업데이트
+        self.update_table()
+        if self.scatter_plot_window:
+            self.scatter_plot_window.update_data_list()
 
     def get_selected_column_data(self):
         selected_item = self.table.currentItem()
@@ -325,8 +424,87 @@ class MainWindow(QMainWindow):
             selected_col = selected_item.column()
             return self.df.iloc[:, selected_col].tolist()
         return []
-    
-    
+
+    def show_avg_std(self):
+        # 선택한 "공정 조건"에 대한 AVG와 STD 계산
+        selected_col = 1  # "공정 조건"이 위치한 Column (두 번째 Column)
+
+        # "공정 조건" Column의 고유한 값들
+        process_conditions = self.df.iloc[:, selected_col].unique()
+
+        avg_std_values = []
+
+        # 3번째 Column부터 각 Column에 대한 AVG와 STD 계산
+        for col in range(2, self.df.shape[1]):
+            col_header = self.df.columns[col]
+            if col_header.lower() == "item":
+                continue
+
+            # Column 데이터가 숫자인 경우에만 계산
+            if pd.api.types.is_numeric_dtype(self.df.iloc[:, col]):
+                avg_std_values_col = []
+
+                for process_condition in process_conditions:
+                    # "공정 조건"에 해당하는 데이터 필터링
+                    filtered_df = self.df[
+                        self.df.iloc[:, selected_col] == process_condition
+                    ]
+                    col_data_filtered = filtered_df.iloc[:, col]
+
+                    # nan이 아닌 경우에만 계산
+                    if not col_data_filtered.isna().all():
+                        avg = col_data_filtered.mean()
+                        std = col_data_filtered.std()
+                        avg_std_values_col.extend([avg, std])
+
+                avg_std_values.append(avg_std_values_col)
+
+        # if np.any(avg_std_values) and np.any(process_conditions):
+        self.update_avg_std_table(avg_std_values, process_conditions)
+
+    def update_avg_std_table(self, avg_std_values, process_conditions):
+        # 테이블 초기화
+        self.table_avg_std.clear()
+
+        # 열 수 설정
+        num_columns = len(avg_std_values[1]) // 2  # AVG와 STD가 쌍으로 있으므로 나누기 2
+        self.table_avg_std.setColumnCount(num_columns)
+
+        # 헤더 설정
+        header_labels = []
+        for col in range(2, self.df.shape[1]):
+            col_header = self.df.columns[col]
+
+            # "item" 칼럼명인 경우 계산 넘어가기
+            if col_header.lower() == "item":
+                continue
+            if pd.api.types.is_numeric_dtype(self.df.iloc[:, col]):
+                for process_condition in process_conditions:
+                    header_labels.append(f"{col_header} - {process_condition} AVG")
+                    header_labels.append(f"{col_header} - {process_condition} STD")
+
+        self.table_avg_std.setHorizontalHeaderLabels(header_labels)
+
+        # 행 수 설정
+        self.table_avg_std.setRowCount(2)
+
+        # 데이터 채우기
+        for row in range(2):
+            for col in range(num_columns):
+                avg_index = col * 2
+                std_index = col * 2 + 1
+
+                avg_value = avg_std_values[col][avg_index]
+                std_value = avg_std_values[col][std_index]
+
+                self.table_avg_std.setItem(
+                    row,
+                    col,
+                    QTableWidgetItem("{:.2f} ± {:.2f}".format(avg_value, std_value)),
+                )
+
+        # 테이블 크기 조정
+        self.table_avg_std.resizeColumnsToContents()
 
 
 if __name__ == "__main__":
