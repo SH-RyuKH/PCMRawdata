@@ -21,13 +21,14 @@ import pyqtgraph as pg
 
 
 class ScatterPlotWindow(QWidget):
-    def __init__(self, column_data, raw_data_window):
+    def __init__(self, selected_col, column_data, raw_data_window):
         super().__init__()
 
-        self.setWindowTitle("Scatter Plot")
+        self.setWindowTitle("이상치 제거")
         self.setGeometry(200, 200, 800, 600)
 
         self.raw_data_window = raw_data_window  # PCM Raw Data 창 참조
+        self.MainWindow = MainWindow
 
         layout = QVBoxLayout(self)
 
@@ -53,6 +54,7 @@ class ScatterPlotWindow(QWidget):
 
         # 모든 데이터의 목록을 표시할 목록 위젯 추가
         self.data_list_widget = QListWidget(self)
+        self.data_list_widget.itemClicked.connect(self.handle_item_clicked)
         layout.addWidget(self.data_list_widget)
 
         # "데이터 삭제" 버튼 추가
@@ -62,7 +64,7 @@ class ScatterPlotWindow(QWidget):
 
         # "데이터 업데이트" 버튼 추가
         self.update_data_button = QPushButton("데이터 업데이트", self)
-        self.update_data_button.clicked.connect(self.update_data)
+        self.update_data_button.clicked.connect(self.update_Outlier_data)
         layout.addWidget(self.update_data_button)
 
         # 창 설정
@@ -71,16 +73,17 @@ class ScatterPlotWindow(QWidget):
         self.selected_point_index = None
         self.update_data_list()
 
-    def handle_item_double_clicked(self, item):
-        # 데이터 목록에서 더블 클릭한 항목의 인덱스 가져오기
+    def handle_item_clicked(self, item):
+        # 데이터 목록에서 클릭한 항목의 인덱스 가져오기
         selected_index = self.data_list_widget.row(item)
 
         # 선택한 데이터의 좌표 표시
         x_value = self.data["x"][selected_index]
         y_value = self.data["y"][selected_index]
         self.selected_coordinates_label.setText(
-            f"선택한 데이터: X: {x_value:.2f}  Y: {y_value:.2f}"
+            f"선택한 데이터: X: {x_value: .1f}  Y: {y_value:.4f}"
         )
+        self.selected_point_index = selected_index
 
     def onMouseClicked(self, event):
         pos = event.scenePos()
@@ -119,13 +122,12 @@ class ScatterPlotWindow(QWidget):
         # 목록을 지우고 다시 추가
         self.data_list_widget.clear()
         for x, y in zip(self.data["x"], self.data["y"]):
-            item = QListWidgetItem(f"X: {x:.2f}  Y: {y:.2f}")
+            item = QListWidgetItem(f"X: {x:.4f}  Y: {y:.4f}")
             self.data_list_widget.addItem(item)
 
     def delete_selected_data(self):
         if self.selected_point_index is not None:
             # 선택한 데이터의 y 값을 0으로 만들기
-            selected_y_value = self.data["y"][self.selected_point_index]
             self.data["y"][self.selected_point_index] = 0
 
             # 그래프 업데이트
@@ -140,15 +142,10 @@ class ScatterPlotWindow(QWidget):
             # 선택한 데이터의 좌표 표시 초기화
             self.selected_coordinates_label.setText("선택한 데이터: X: ?  Y: ?")
 
-    def update_data(self):
-        # Scatter Plot 창에서 PCM Raw Data 창의 데이터 업데이트 호출
-        self.raw_data_window.update_data()
+    def update_Outlier_data(self):
+        #이상치 제거에 있는 데이터를 변경했을때 PCM Raw Data에 있는 데이터를 업데이트해줘
 
-        # 업데이트된 데이터를 가져와서 그래프와 데이터 목록 업데이트
-        column_data = self.raw_data_window.get_selected_column_data()
-        self.scatter_plot.setData(x=list(range(len(column_data))), y=column_data)
-        self.data = {"x": list(range(len(column_data))), "y": column_data}
-        self.update_data_list()
+        self.close()
 
 
 class MainWindow(QMainWindow):
@@ -190,6 +187,11 @@ class MainWindow(QMainWindow):
 
         self.scatter_plot_window = None
 
+        # 버튼들을 비활성화 상태로 초기화
+        self.modify_button.setEnabled(False)
+        self.delete_button.setEnabled(False)
+        self.chart_button.setEnabled(False)
+
     def upload_excel(self):
         options = QFileDialog.Options()
         options |= QFileDialog.ReadOnly
@@ -212,20 +214,27 @@ class MainWindow(QMainWindow):
                 print(f"Error reading Excel file: {e}")
 
             if self.df is not None:
+                # 데이터가 로드되면 버튼들을 활성화
+                self.modify_button.setEnabled(True)
+                self.delete_button.setEnabled(True)
+                self.chart_button.setEnabled(True)
+
+                self.Add_Column()
                 self.update_table()
+
+    def Add_Column(self):
+        # "공정조건"이라는 column 추가
+        self.df["공정조건"] = self.create_process_column(self.df.iloc[:, 0])
+
+        # "공정조건" 칼럼을 두 번째 칼럼으로 이동
+        cols = list(self.df.columns)
+        cols = [cols[0], "공정조건"] + cols[1:-1]
+        self.df = self.df[cols]
 
     def update_table(self):
         self.table.clear()
 
         if self.df is not None:
-            # "공정조건"이라는 column 추가
-            self.df["공정조건"] = self.create_process_column(self.df.iloc[:, 0])
-
-            # "공정조건" 칼럼을 두 번째 칼럼으로 이동
-            cols = list(self.df.columns)
-            cols = [cols[0], "공정조건"] + cols[1:-1] + [cols[-1]]
-            self.df = self.df[cols]
-
             self.table.setRowCount(self.df.shape[0])
             self.table.setColumnCount(self.df.shape[1])
 
@@ -305,17 +314,10 @@ class MainWindow(QMainWindow):
             column_data = self.df.iloc[:, selected_col].tolist()
 
             # 인스턴스 변수로 선언한 scatter_plot_window를 사용
-            self.scatter_plot_window = ScatterPlotWindow(column_data, self)
+            self.scatter_plot_window = ScatterPlotWindow(
+                selected_col, column_data, self
+            )
             self.scatter_plot_window.show()
-
-    def update_data(self):
-        # 파일을 다시 불러와서 데이터 업데이트
-        self.df = pd.read_excel(self.filename)
-
-        # 업데이트된 데이터로 테이블과 차트 업데이트
-        self.update_table()
-        if self.scatter_plot_window:
-            self.scatter_plot_window.update_data_list()
 
     def get_selected_column_data(self):
         selected_item = self.table.currentItem()
@@ -323,6 +325,8 @@ class MainWindow(QMainWindow):
             selected_col = selected_item.column()
             return self.df.iloc[:, selected_col].tolist()
         return []
+    
+    
 
 
 if __name__ == "__main__":
