@@ -171,15 +171,24 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("PCM Raw Data")
         self.setGeometry(100, 100, 1600, 1200)
 
-        # Central Widget을 Splitter로 변경
-        self.central_splitter = QSplitter(Qt.Horizontal, self)
-        self.setCentralWidget(self.central_splitter)
-
         # 버튼 크기 설정
         button_width = 100
         button_height = 30
 
         self.scatter_plot_window = None  # ScatterPlotWindow 인스턴스 저장 변수 추가
+
+        # 좌측 영역에 현재 내용 보여주는 위젯 추가
+        self.left_widget = QWidget(self)
+        self.left_layout = QVBoxLayout(self.left_widget)
+        self.label = QLabel("선택된 파일 없음", self.left_widget)
+        self.left_layout.addWidget(self.label)
+
+        # 버튼 크기를 조정할 QSizePolicy 설정
+        button_size_policy = QSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
+
+        # Central Widget을 Splitter로 변경
+        self.central_splitter = QSplitter(Qt.Horizontal, self)
+        self.setCentralWidget(self.central_splitter)
 
         # 좌측 영역에 현재 내용 보여주는 위젯 추가
         self.left_widget = QWidget(self)
@@ -239,18 +248,19 @@ class MainWindow(QMainWindow):
         self.table_avg_std = QTableWidget(self.left_widget)
         self.left_layout.addWidget(self.table_avg_std)
 
+        # 첫번째
+        self.central_splitter_2 = QSplitter(Qt.Vertical, self.central_splitter)
         self.central_splitter.addWidget(self.left_widget)
-
-        # 중앙 영역에 추가된 분할 화면 추가
-        self.central_splitter_2 = QSplitter(Qt.Horizontal, self.central_splitter)
-
-        # 가운데 분할 화면에 추가할 QComboBox 초기화
-        self.column_combobox_avg_std = QComboBox(self.central_splitter_2)
-        self.column_combobox_avg_std.setSizePolicy(button_size_policy)
-        self.column_combobox_avg_std.setFixedSize(button_width, button_height)
         self.central_splitter.addWidget(self.central_splitter_2)
 
-        # 우측 영역에 어디에 추가해야 할지를 보여주는 위젯 추가
+        self.middle_widget = QWidget(self)
+        # 가운데 분할 화면에 추가할 QComboBox 초기화
+        self.column_combobox_avg_std = QComboBox(self.central_splitter_2)
+        self.column_combobox_avg_std.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        self.column_combobox_avg_std.setFixedSize(button_width, button_height)
+        self.central_splitter_2.addWidget(self.column_combobox_avg_std)
+
+        # 오른쪽 영역에 어디에 추가해야 할지를 보여주는 위젯 추가
         self.right_widget = QWidget(self)
         self.right_layout = QVBoxLayout(self.right_widget)
         # Scatter Plot 창을 QDockWidget으로 만들고 오른쪽에 추가
@@ -265,6 +275,8 @@ class MainWindow(QMainWindow):
         self.df = None
 
         self.scatter_plot_window = None
+
+        self.set_splitter_sizes()
 
     def set_splitter_sizes(self):
         # Set initial sizes for the splitters
@@ -535,6 +547,5 @@ class MainWindow(QMainWindow):
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     window = MainWindow()
-    window.set_splitter_sizes()
     window.show()
     sys.exit(app.exec_())
