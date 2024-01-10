@@ -113,7 +113,7 @@ class ScatterPlotWindow(QWidget):
         x_value = self.data["x"][selected_index]
         y_value = self.data["y"][selected_index]
         self.selected_coordinates_label.setText(
-            f"선택한 데이터: X: {x_value:.4f}  Y: {y_value:.4f}"
+            f"선택한 데이터: X: {x_value:.6f}  Y: {y_value:.6f}"
         )
 
     def onMouseClicked(self, event):
@@ -132,7 +132,7 @@ class ScatterPlotWindow(QWidget):
         x_value = self.data["x"][min_index]
         y_value = self.data["y"][min_index]
         self.selected_coordinates_label.setText(
-            f"선택한 데이터: X: {x_value:.4f}  Y: {y_value:.4f}"
+            f"선택한 데이터: X: {x_value:.6f}  Y: {y_value:.6f}"
         )
 
         # 현재 클릭한 점 하이라이트
@@ -153,7 +153,7 @@ class ScatterPlotWindow(QWidget):
         # 목록을 지우고 다시 추가
         self.data_list_widget.clear()
         for x, y in zip(self.data["x"], self.data["y"]):
-            item = QListWidgetItem(f"X: {x:.4f}  Y: {y:.4f}")
+            item = QListWidgetItem(f"X: {x:.6f}  Y: {y:.6f}")
             self.data_list_widget.addItem(item)
 
     def delete_selected_data(self):
@@ -227,8 +227,6 @@ class MainWindow(QMainWindow):
         self.filename = None
         self.df = None
         self.scatter_plot_window = None
-
-        self.scatter_plot_window.dataUpdated.connect(self.handle_scatter_data_updated)
 
     def upload_excel(self):
         options = QFileDialog.Options()
@@ -326,7 +324,9 @@ class MainWindow(QMainWindow):
             self.scatter_plot_window = ScatterPlotWindow(
                 column_data, self, selected_column_name
             )
-
+            self.scatter_plot_window.dataUpdated.connect(
+                self.handle_scatter_data_updated
+            )
             self.scatter_plot_window.show()
 
     def update_data(self):
@@ -454,10 +454,13 @@ class MainWindow(QMainWindow):
 
         # Y값 업데이트
         for row, y_value in enumerate(updated_y_values):
-            self.set_table_value(row, selected_col_index, y_value)
+            item = QTableWidgetItem("{:.6f}".format(y_value))
+            self.table.setItem(row, selected_col_index, item)
 
-        # 테이블 크기 조정
-        self.table.resizeColumnsToContents()
+            # 테이블 크기 조정
+            self.table.resizeColumnsToContents()
+
+        self.show_avg_std()
 
 
 if __name__ == "__main__":
