@@ -201,33 +201,131 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("PCM Raw Data")
         self.setGeometry(100, 100, 1600, 1200)
 
+<<<<<<< HEAD
         # 좌측 영역
         self.central_widget = QWidget(self)
         self.setCentralWidget(self.central_widget)
 
         self.layout = QVBoxLayout(self.central_widget)
+=======
+        # 버튼 크기 설정
+        button_width = 100
+        button_height = 30
+>>>>>>> 29caa351e28a63d0038263fcf6f55bb5e466b7e3
 
         # 버튼 및 테이블 등을 추가
         self.label = QLabel("선택된 파일 없음", self.central_widget)
         self.upload_button = QPushButton("Excel 업로드", self.central_widget)
         self.chart_button = QPushButton("이상치 제거", self.central_widget)
 
+<<<<<<< HEAD
         # 버튼에 함수 연결
+=======
+        # 좌측 영역에 현재 내용 보여주는 위젯 추가
+        self.left_widget = QWidget(self)
+        self.left_layout = QVBoxLayout(self.left_widget)
+        self.label = QLabel("선택된 파일 없음", self.left_widget)
+        self.left_layout.addWidget(self.label)
+
+        # 버튼 크기를 조정할 QSizePolicy 설정
+        button_size_policy = QSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
+
+        # Central Widget을 Splitter로 변경
+        self.central_splitter = QSplitter(Qt.Horizontal, self)
+        self.setCentralWidget(self.central_splitter)
+
+        # 좌측 영역에 현재 내용 보여주는 위젯 추가
+        self.left_widget = QWidget(self)
+        self.left_layout = QVBoxLayout(self.left_widget)
+        self.label = QLabel("선택된 파일 없음", self.left_widget)
+        self.left_layout.addWidget(self.label)
+
+        # 버튼 크기를 조정할 QSizePolicy 설정
+        button_size_policy = QSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
+
+        # 수평 박스 레이아웃 생성
+        button_layout = QHBoxLayout()
+
+        # Excel 업로드 버튼 추가
+        self.upload_button = QPushButton("Excel 업로드", self.left_widget)
+        self.upload_button.setSizePolicy(button_size_policy)
+        self.upload_button.setFixedSize(button_width, button_height)
+>>>>>>> 29caa351e28a63d0038263fcf6f55bb5e466b7e3
         self.upload_button.clicked.connect(self.upload_excel)
         self.chart_button.clicked.connect(self.show_scatter_plot)
         self.table = QTableWidget(self.central_widget)
         self.table_avg_std = QTableWidget(self.central_widget)
 
+<<<<<<< HEAD
         self.layout.addWidget(self.label)
         self.layout.addWidget(self.upload_button)
         self.layout.addWidget(self.chart_button)
         self.layout.addWidget(self.table)
         self.layout.addWidget(self.table_avg_std)
+=======
+        # AVG / STD 버튼 추가
+        self.avg_std_button = QPushButton("AVG / STD", self.left_widget)
+        self.avg_std_button.setSizePolicy(button_size_policy)
+        self.avg_std_button.setFixedSize(button_width, button_height)
+        self.avg_std_button.clicked.connect(self.show_avg_std)
+        button_layout.addWidget(self.avg_std_button)
+
+        # 수평 박스 레이아웃을 왼쪽 위젯에 추가
+        self.left_layout.addLayout(button_layout)
+
+        # 위쪽에 테이블 추가
+        self.table = QTableWidget(self.left_widget)
+        self.left_layout.addWidget(self.table)
+
+        # 아래쪽에 테이블 추가
+        self.table_avg_std = QTableWidget(self.left_widget)
+        self.left_layout.addWidget(self.table_avg_std)
+
+        # 첫번째
+        self.central_splitter_2 = QSplitter(Qt.Vertical, self.central_splitter)
+        self.central_splitter.addWidget(self.left_widget)
+        self.central_splitter.addWidget(self.central_splitter_2)
+
+        self.middle_widget = QWidget(self)
+        # 가운데 분할 화면에 추가할 QComboBox 초기화
+        self.column_combobox_avg_std = QComboBox(self.central_splitter_2)
+        self.column_combobox_avg_std.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        self.column_combobox_avg_std.setFixedSize(button_width, button_height)
+        self.central_splitter_2.addWidget(self.column_combobox_avg_std)
+
+        # 오른쪽 영역에 어디에 추가해야 할지를 보여주는 위젯 추가
+        self.right_widget = QWidget(self)
+        self.right_layout = QVBoxLayout(self.right_widget)
+        # Scatter Plot 창을 QDockWidget으로 만들고 오른쪽에 추가
+        self.scatter_plot_window = ScatterPlotWindow([], self)
+        self.scatter_plot_dock = QDockWidget("Scatter Plot", self)
+        self.scatter_plot_dock.setWidget(self.scatter_plot_window)
+        self.addDockWidget(Qt.RightDockWidgetArea, self.scatter_plot_dock)
+
+        self.central_splitter.addWidget(self.right_widget)
+>>>>>>> 29caa351e28a63d0038263fcf6f55bb5e466b7e3
 
         self.filename = None
         self.df = None
         self.scatter_plot_window = None
 
+<<<<<<< HEAD
+=======
+        self.set_splitter_sizes()
+
+    def set_splitter_sizes(self):
+        # Set initial sizes for the splitters
+        self.central_splitter.setSizes(
+            [self.width() // 3, self.width() // 3, self.width() // 3]
+        )
+        self.central_splitter_2.setSizes(
+            [
+                self.height() // 2,
+                self.height() // 2,
+            ]
+        )
+
+>>>>>>> 29caa351e28a63d0038263fcf6f55bb5e466b7e3
     def upload_excel(self):
         options = QFileDialog.Options()
         options |= QFileDialog.ReadOnly
