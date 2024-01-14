@@ -1,6 +1,7 @@
 import sys
 import pandas as pd
 import numpy as np
+import matplotlib.pyplot as plt
 from PyQt5.QtWidgets import (
     QApplication,
     QMainWindow,
@@ -219,30 +220,6 @@ class ScatterPlotWindow(QWidget):
     def get_saved_data(self):
         # ScatterPlotWindow의 데이터를 가져오는 메서드
         return self.selected_column_name, self.column_data
-
-
-# 새 창에 AVG 차트 표시를 위한 클래스 추가
-class AvgChartWindow(QWidget):
-    def __init__(self, selected_column_name, avg_data):
-        super().__init__()
-
-        self.setWindowTitle(f"{selected_column_name} AVG 차트")
-        self.setGeometry(1700, 100, 1200, 800)
-
-        layout = QVBoxLayout(self)
-
-        # 그래프 위젯 생성
-        self.plot_widget = pg.PlotWidget(self)
-        layout.addWidget(self.plot_widget)
-
-        # AVG 차트 생성
-        self.avg_plot = self.plot_widget.plot(
-            x=avg_data["Alphabet"],
-            y=avg_data["AVG"],
-            pen=None,
-            symbol="o",
-            symbolSize=10,
-        )
 
 
 class MainWindow(QMainWindow):
@@ -585,9 +562,30 @@ class MainWindow(QMainWindow):
                 "AVG": avg_column_data,
             }
 
-            # 새 창을 띄워서 AVG 차트 표시
-            avg_chart_window = AvgChartWindow(selected_column, avg_data)
-            avg_chart_window.show()
+            # 선택한 칼럼의 AVG를 matplotlib로 차트 그리기
+            self.plot_avg_scatter_chart(selected_column, avg_data)
+
+    def plot_avg_scatter_chart(self, selected_column, avg_data):
+        # 문자열 값을 숫자로 변환
+        alphabet_mapping = {
+            alphabet: index for index, alphabet in enumerate(avg_data["Alphabet"])
+        }
+        x_values = [alphabet_mapping[alphabet] for alphabet in avg_data["Alphabet"]]
+
+        # 그래프를 그릴 Figure 생성
+        figure, ax = plt.subplots(figsize=(8, 6))
+
+        # 알파벳 - AVG 차트 그리기
+        ax.scatter(x_values, avg_data["AVG"], marker="o", s=100)
+
+        ax.set_xticks(x_values)
+        ax.set_xticklabels(avg_data["Alphabet"])
+        ax.set_xlabel("공정 조건")
+        ax.set_ylabel(selected_column + " AVG")
+        ax.set_title(f"{selected_column} - AVG Chart")
+
+        # 차트를 보여주기
+        plt.show()
 
     def get_avg_column_data(self, selected_column):
         # 선택한 열의 "_AVG"에 해당하는 데이터를 가져옴
