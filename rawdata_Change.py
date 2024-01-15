@@ -1,7 +1,7 @@
 import pandas as pd
 
 # 엑셀 파일 경로 설정
-excel_file_path = "sumraw.xlsx"
+excel_file_path = "sda.xlsx"
 
 # 엑셀 파일 읽기
 df = pd.read_excel(excel_file_path, header=None)
@@ -9,7 +9,11 @@ df = pd.read_excel(excel_file_path, header=None)
 # 전처리 시작
 column_names = []
 data_values = []
+<<<<<<< HEAD
 static_values = ["Avg", "Std", "Min", "Max"]
+=======
+static_values=["Avg","Std","Min","Max"]
+>>>>>>> e50e507503bf68bfe9ab992773d0bb123de38a8a
 wafer_id = None
 start_processing = False
 unique_second_values = set()
@@ -27,7 +31,7 @@ for index, row in df.iterrows():
     elif start_processing and pd.isna(row[0]):
         # Wafer ID가 나온 이후에 다음 Wafer ID 전에 공백이 있다면 무시
         continue
-    elif start_processing:
+    elif start_processing :
         # 처음에는 40자를 자르고, 이후부터는 11자씩 자르고 값 추출
         if len(str(row[0])) > 40:
             values = [str(row[0])[:40].strip()] + [
@@ -73,10 +77,15 @@ result_df = pd.concat(result_dfs, ignore_index=True)
 
 # 행 별로 조회하면서 Column명과 동일한 행 제거
 result_df = result_df[~result_df.apply(lambda row: any(row == column_names), axis=1)]
+<<<<<<< HEAD
 for i in range(0, 4):
     result_df = result_df[
         ~result_df.apply(lambda row: any(row == static_values[i]), axis=1)
     ]
+=======
+for i in range(0,4):
+    result_df = result_df[~result_df.apply(lambda row: any(row == static_values[i]), axis=1)]
+>>>>>>> e50e507503bf68bfe9ab992773d0bb123de38a8a
 
 column_names.insert(0, "Wafer ID")
 # 행 별로 조회하면서 Slot 다음에 나오는 숫자를 다음 Slot이 나올 때까지 Wafer ID에 추가
@@ -90,4 +99,8 @@ for index, row in result_df.iterrows():
         result_df.at[index, "Wafer ID"] = current_wafer_id
 
 result_df.insert(0, "Wafer ID", result_df.pop("Wafer ID"))
+<<<<<<< HEAD
 result_df.to_excel("inventors.xlsx")
+=======
+result_df.to_excel('inventors.xlsx')
+>>>>>>> e50e507503bf68bfe9ab992773d0bb123de38a8a
