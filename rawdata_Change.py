@@ -9,16 +9,21 @@ df = pd.read_excel(excel_file_path, header=None)
 # 전처리 시작
 column_names = []
 data_values = []
+static_values = ["Avg", "Std", "Min", "Max"]
 wafer_id = None
 start_processing = False
 unique_second_values = set()
+wafer_no = 0
 
 # 행 별로 조회
 for index, row in df.iterrows():
     # 처음 Wafer ID가 나오면 처리 시작
     if "Wafer ID:" in str(row[0]):
-        wafer_id = row[0].split(":")[-1].strip()
+        wafer_id = row[0]
         start_processing = True
+        wafer_no += 1
+    elif "Lot Summary" in str(row[0]):
+        break
     elif start_processing and pd.isna(row[0]):
         # Wafer ID가 나온 이후에 다음 Wafer ID 전에 공백이 있다면 무시
         continue
@@ -42,6 +47,7 @@ for index, row in df.iterrows():
         # 나머지 행은 데이터 값으로 사용
         data_values.append([wafer_id] + values)
 
+
 # column_names에 Wafer ID 추가
 for i in data_values:
     if i[1] not in unique_second_values:
@@ -51,12 +57,11 @@ for i in data_values:
 # 데이터프레임 생성
 data_df = pd.DataFrame(data_values)
 data_df = data_df.transpose()
-print(data_df)
-# 데이터프레임을 4개씩 잘라서 리스트에 저장
-num_columns = len(column_names)
-total_columns = len(data_df[0])
-result_dfs = []
 
+# 데이터프레임을 잘라서 리스트에 저장
+num_columns = len(column_names)
+total_columns = wafer_no * num_columns
+result_dfs = []
 
 for i in range(0, total_columns, num_columns):
     subset_df = data_df.iloc[:, i : i + num_columns]
@@ -68,12 +73,16 @@ result_df = pd.concat(result_dfs, ignore_index=True)
 
 # 행 별로 조회하면서 Column명과 동일한 행 제거
 result_df = result_df[~result_df.apply(lambda row: any(row == column_names), axis=1)]
+for i in range(0, 4):
+    result_df = result_df[
+        ~result_df.apply(lambda row: any(row == static_values[i]), axis=1)
+    ]
 
 column_names.insert(0, "Wafer ID")
 # 행 별로 조회하면서 Slot 다음에 나오는 숫자를 다음 Slot이 나올 때까지 Wafer ID에 추가
 current_wafer_id = None
 for index, row in result_df.iterrows():
-    if "Slot" in str(row[0]):
+    if "Wafer ID:" in str(row[0]):
         current_wafer_id = str(row[0]).split()[-1]
         result_df = result_df.drop(index)
 
@@ -81,5 +90,4 @@ for index, row in result_df.iterrows():
         result_df.at[index, "Wafer ID"] = current_wafer_id
 
 result_df.insert(0, "Wafer ID", result_df.pop("Wafer ID"))
-# 결과 확인
-print(result_df)
+result_df.to_excel("inventors.xlsx")

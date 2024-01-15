@@ -127,7 +127,7 @@ class ScatterPlotWindow(QWidget):
         x_value = self.data["x"][selected_index]
         y_value = self.data["y"][selected_index]
         self.selected_coordinates_label.setText(
-            f"선택한 데이터: X: {x_value:.6f}  Y: {y_value:.6f}"
+            f"선택한 데이터: X: {x_value:.15f}  Y: {y_value:.15f}"
         )
 
     def closeEvent(self, event):
@@ -156,7 +156,7 @@ class ScatterPlotWindow(QWidget):
         x_value = self.data["x"][min_index]
         y_value = self.data["y"][min_index]
         self.selected_coordinates_label.setText(
-            f"선택한 데이터: X: {x_value:.6f}  Y: {y_value:.6f}"
+            f"선택한 데이터: X: {x_value:.15f}  Y: {y_value:.15f}"
         )
 
         # 현재 클릭한 점 하이라이트
@@ -177,7 +177,7 @@ class ScatterPlotWindow(QWidget):
         # 목록을 지우고 다시 추가
         self.data_list_widget.clear()
         for x, y in zip(self.data["x"], self.data["y"]):
-            item = QListWidgetItem(f"X: {x:.6f}  Y: {y:.6f}")
+            item = QListWidgetItem(f"X: {x:.15f}  Y: {y:.15f}")
             self.data_list_widget.addItem(item)
 
     def delete_selected_data(self):
@@ -280,9 +280,111 @@ class MainWindow(QMainWindow):
         self.df = None
         self.scatter_plot_window = None
 
+    def process_excel_data(self, excel_file_path):
+        # Read Excel file
+        df = pd.read_excel(excel_file_path, header=None)
+
+        # 전처리 시작
+        column_names = []
+        data_values = []
+        static_values = ["Avg", "Std", "Min", "Max"]
+        wafer_id = None
+        start_processing = False
+        unique_second_values = set()
+        wafer_no = 0
+
+        # 행 별로 조회
+        for index, row in df.iterrows():
+            # 처음 Wafer ID가 나오면 처리 시작
+            if "Wafer ID:" in str(row[0]):
+                wafer_id = row[0]
+                start_processing = True
+                wafer_no += 1
+            elif "Lot Summary" in str(row[0]):
+                break
+            elif start_processing and pd.isna(row[0]):
+                # Wafer ID가 나온 이후에 다음 Wafer ID 전에 공백이 있다면 무시
+                continue
+            elif start_processing:
+                # 처음에는 40자를 자르고, 이후부터는 11자씩 자르고 값 추출
+                if len(str(row[0])) > 40:
+                    values = [str(row[0])[:40].strip()] + [
+                        value.strip()
+                        for value in [
+                            str(row[0])[i : i + 11]
+                            for i in range(40, len(str(row[0])), 11)
+                        ]
+                        if value
+                    ]
+                else:
+                    values = [str(row[0]).strip()]
+
+                # 40자를 자른 부분이 모두 공백이면 중단
+                if not values[0]:
+                    break
+
+                # 나머지 행은 데이터 값으로 사용
+                data_values.append([wafer_id] + values)
+
+        # column_names에 Wafer ID 추가
+        for i in data_values:
+            if i[1] not in unique_second_values:
+                unique_second_values.add(i[1])
+                column_names.append(i[1])
+
+        # 데이터프레임 생성
+        data_df = pd.DataFrame(data_values)
+        data_df = data_df.transpose()
+
+        # 데이터프레임을 잘라서 리스트에 저장
+        num_columns = len(column_names)
+        total_columns = wafer_no * num_columns
+        result_dfs = []
+
+        for i in range(0, total_columns, num_columns):
+            subset_df = data_df.iloc[:, i : i + num_columns]
+            subset_df.columns = column_names  # 각 데이터프레임의 열 이름 설정
+            subset_df = subset_df.applymap(
+                lambda x: float(x) if isinstance(x, (int, float)) else x
+            )
+
+            result_dfs.append(subset_df)
+
+        # 리스트에 있는 데이터프레임들을 하나로 합치기
+        result_df = pd.concat(result_dfs, ignore_index=True)
+
+        # 행 별로 조회하면서 Column명과 동일한 행 제거
+        result_df = result_df[
+            ~result_df.apply(lambda row: any(row == column_names), axis=1)
+        ]
+        for i in range(0, 4):
+            result_df = result_df[
+                ~result_df.apply(lambda row: any(row == static_values[i]), axis=1)
+            ]
+
+        column_names.insert(0, "Wafer ID")
+        # 행 별로 조회하면서 Slot 다음에 나오는 숫자를 다음 Slot이 나올 때까지 Wafer ID에 추가
+        current_wafer_id = None
+        for index, row in result_df.iterrows():
+            if "Wafer ID:" in str(row[0]):
+                current_wafer_id = str(row[0]).split()[-1]
+                result_df = result_df.drop(index)
+
+            elif current_wafer_id:
+                result_df.at[index, "Wafer ID"] = current_wafer_id
+
+        result_df.insert(0, "Wafer ID", result_df.pop("Wafer ID"))
+        return result_df
+
     def upload_excel(self):
         options = QFileDialog.Options()
         options |= QFileDialog.ReadOnly
+
+        def convert_to_float(value):
+            try:
+                return float(value)
+            except ValueError:
+                return value
 
         file_dialog = QFileDialog(self)
         file_dialog.setNameFilter("Excel 파일 (*.xlsx *.xls)")
@@ -290,29 +392,17 @@ class MainWindow(QMainWindow):
         file_dialog.setOptions(options)
 
         if file_dialog.exec_():
-            self.filename = file_dialog.selectedFiles()[0]
+            processed_filename = file_dialog.selectedFiles()[0]
             self.label.setText(f"선택된 파일: {self.filename}")
 
-            # 새로운 파일 업로드 시 기존 데이터 초기화
-            self.df = None
-
             try:
-                self.df = pd.read_excel(self.filename)
+                processed_df = self.process_excel_data(processed_filename)
+                self.df = processed_df
+
             except Exception as e:
                 print(f"Error reading Excel file: {e}")
 
             if self.df is not None:
-                # "공정조건"이라는 column 추가
-                self.df["공정조건"] = self.create_process_column(self.df.iloc[:, 0])
-
-                # "공정조건" 칼럼을 두 번째 칼럼으로 이동
-                cols = list(self.df.columns)
-                cols = [cols[0], "공정조건"] + cols[1:-1] + [cols[-1]]
-                self.df = self.df[cols]
-
-                # 마지막 칼럼 제거
-                self.df = self.df.iloc[:, :-1]
-
                 self.table.setRowCount(self.df.shape[0])
                 self.table.setColumnCount(self.df.shape[1])
                 self.update_table()
@@ -324,8 +414,6 @@ class MainWindow(QMainWindow):
                     if col == "item":
                         continue
                     self.item_column_combobox.addItem(col)
-
-        self.show_avg_std()
 
     def update_table(self):
         self.table.clear()
@@ -343,27 +431,34 @@ class MainWindow(QMainWindow):
                     self.table.setItem(i, j, item)
 
         self.table.resizeColumnsToContents()
+        # 테이블의 값을 새로운 데이터프레임으로 옮기기
+        upload_df = pd.DataFrame(
+            index=range(self.table.rowCount()), columns=self.df.columns
+        )
+
+        for i in range(self.table.rowCount()):
+            for j in range(self.table.columnCount()):
+                item = self.table.item(i, j)
+                if item is not None:
+                    upload_df.iloc[i, j] = self.get_original_value(item)
+
+        self.df = upload_df
+        self.show_avg_std()
+
+    def get_original_value(self, item):
+        # 이 함수는 QTableWidgetItem에서 원래 값으로 변환하는데 사용될 수 있습니다.
+        # 예: 부동 소수점 값이나 다른 형태의 값을 가져오는 데 사용될 수 있습니다.
+        # 실제로 사용하는 데이터 형식에 따라 구현이 달라질 수 있습니다.
+        return item.text()
 
     def get_formatted_value(self, value):
-        if isinstance(value, int):
+        try:
+            # 문자열을 부동 소수점으로 변환 시도
+            float_value = float(value)
+            return "{:.15f}".format(float_value)
+        except ValueError:
+            # 변환할 수 없는 경우는 그대로 반환
             return str(value)
-        elif isinstance(value, float):
-            return "{:.6f}".format(value)
-        else:
-            return str(value)
-
-    def create_process_column(self, column_data):
-        process_column = []
-        current_group = None
-        alphabet_index = 0
-
-        for value in column_data:
-            if current_group is None or value == 1:
-                current_group = alphabet_index
-                alphabet_index = (alphabet_index + 1) % 26
-            process_column.append(chr(ord("A") + current_group))
-
-        return process_column
 
     def show_scatter_plot(self):
         selected_item = self.table.currentItem()
@@ -422,7 +517,7 @@ class MainWindow(QMainWindow):
 
     def show_avg_std(self):
         # 선택한 "공정 조건"에 대한 AVG와 STD 계산
-        selected_col_index = 1  # "공정 조건"이 위치한 Column (두 번째 Column)
+        selected_col_index = 0  # "공정 조건"이 위치한 Column (두 번째 Column)
 
         # "공정 조건" Column의 고유한 값들
         process_conditions = self.df.iloc[:, selected_col_index].unique()
@@ -434,28 +529,29 @@ class MainWindow(QMainWindow):
             col_header = self.df.columns[col_index]
 
             # "item" 칼럼명인 경우 계산 넘어가기
-            if col_header.lower() == "item":
+            if col_header.lower() == "Item Name":
                 continue
-            if pd.api.types.is_numeric_dtype(self.df.iloc[:, col_index]):
-                for process_condition in process_conditions:
-                    # "공정 조건"에 해당하는 데이터 필터링
-                    filtered_df = self.df[
-                        self.df.iloc[:, selected_col_index] == process_condition
-                    ]
-                    col_data_filtered = filtered_df.iloc[:, col_index]
+            if col_header.lower() == "Wafer ID":
+                continue
+            self.df.iloc[:, col_index] = pd.to_numeric(self.df.iloc[:, col_index])
 
-                    # nan이 아닌 경우에만 계산
-                    if not col_data_filtered.isna().all():
-                        avg = col_data_filtered.mean()
-                        std = col_data_filtered.std()
+            # 이미 숫자로 변환된 경우에만 계산 수행
 
-                        # 결과 리스트에 정보 추가
-                        avg_std_values.append(
-                            [col_header, process_condition, "AVG", avg]
-                        )
-                        avg_std_values.append(
-                            [col_header, process_condition, "STD", std]
-                        )
+            for process_condition in process_conditions:
+                # "공정 조건"에 해당하는 데이터 필터링
+                filtered_df = self.df[
+                    self.df.iloc[:, selected_col_index] == process_condition
+                ]
+                col_data_filtered = filtered_df.iloc[:, col_index]
+
+                # nan이 아닌 경우에만 계산
+                if not col_data_filtered.isna().all():
+                    avg = col_data_filtered.mean()
+                    std = col_data_filtered.std()
+
+                    # 결과 리스트에 정보 추가
+                    avg_std_values.append([col_header, process_condition, "AVG", avg])
+                    avg_std_values.append([col_header, process_condition, "STD", std])
 
         # "table_avg_std" 테이블에 AVG 및 STD 표시
         self.update_avg_std_table(avg_std_values)
@@ -507,10 +603,10 @@ class MainWindow(QMainWindow):
                 )
 
                 self.table_avg_std.setItem(
-                    row, col * 2, QTableWidgetItem("{:.6f}".format(avg_value))
+                    row, col * 2, QTableWidgetItem("{:.15f}".format(avg_value))
                 )
                 self.table_avg_std.setItem(
-                    row, col * 2 + 1, QTableWidgetItem("{:.6f}".format(std_value))
+                    row, col * 2 + 1, QTableWidgetItem("{:.15f}".format(std_value))
                 )
 
                 # "공정 조건" 표시
@@ -529,7 +625,7 @@ class MainWindow(QMainWindow):
 
         # Y값 업데이트
         for row, y_value in enumerate(updated_y_values):
-            item = QTableWidgetItem("{:.6f}".format(y_value))
+            item = QTableWidgetItem("{:.15f}".format(y_value))
             self.table.setItem(row, selected_col_index, item)
 
         # 데이터프레임(df) 업데이트
@@ -558,7 +654,7 @@ class MainWindow(QMainWindow):
         # AVG 데이터가 있는 경우에만 차트 표시
         if avg_column_data is not None:
             avg_data = {
-                "Alphabet": self.df["공정조건"].unique().tolist(),  # "공정조건"의 값들을 가져옴
+                "Slot": self.df["Wafer ID"].unique().tolist(),  # "공정조건"의 값들을 가져옴
                 "AVG": avg_column_data,
             }
 
@@ -566,11 +662,7 @@ class MainWindow(QMainWindow):
             self.plot_avg_scatter_chart(selected_column, avg_data)
 
     def plot_avg_scatter_chart(self, selected_column, avg_data):
-        # 문자열 값을 숫자로 변환
-        alphabet_mapping = {
-            alphabet: index for index, alphabet in enumerate(avg_data["Alphabet"])
-        }
-        x_values = [alphabet_mapping[alphabet] for alphabet in avg_data["Alphabet"]]
+        x_values = avg_data["Slot"]
 
         # 그래프를 그릴 Figure 생성
         figure, ax = plt.subplots(figsize=(8, 6))

@@ -113,7 +113,7 @@ class ScatterPlotWindow(QWidget):
         x_value = self.data["x"][selected_index]
         y_value = self.data["y"][selected_index]
         self.selected_coordinates_label.setText(
-            f"선택한 데이터: X: {x_value:.6f}  Y: {y_value:.6f}"
+            f"선택한 데이터: X: {x_value:.15f}  Y: {y_value:.15f}"
         )
 
     def onMouseClicked(self, event):
@@ -132,7 +132,7 @@ class ScatterPlotWindow(QWidget):
         x_value = self.data["x"][min_index]
         y_value = self.data["y"][min_index]
         self.selected_coordinates_label.setText(
-            f"선택한 데이터: X: {x_value:.6f}  Y: {y_value:.6f}"
+            f"선택한 데이터: X: {x_value:.15f}  Y: {y_value:.15f}"
         )
 
         # 현재 클릭한 점 하이라이트
@@ -153,7 +153,7 @@ class ScatterPlotWindow(QWidget):
         # 목록을 지우고 다시 추가
         self.data_list_widget.clear()
         for x, y in zip(self.data["x"], self.data["y"]):
-            item = QListWidgetItem(f"X: {x:.6f}  Y: {y:.6f}")
+            item = QListWidgetItem(f"X: {x:.15f}  Y: {y:.15f}")
             self.data_list_widget.addItem(item)
 
     def delete_selected_data(self):
@@ -211,7 +211,7 @@ class MainWindow(QMainWindow):
         # 버튼 크기 설정
         button_width = 100
         button_height = 30
->>>>>>> 29caa351e28a63d0038263fcf6f55bb5e466b7e3
+>>>>>>> 29caa351e28a63d0038263fcf15f55bb5e466b7e3
 
         # 버튼 및 테이블 등을 추가
         self.label = QLabel("선택된 파일 없음", self.central_widget)
@@ -250,7 +250,7 @@ class MainWindow(QMainWindow):
         self.upload_button = QPushButton("Excel 업로드", self.left_widget)
         self.upload_button.setSizePolicy(button_size_policy)
         self.upload_button.setFixedSize(button_width, button_height)
->>>>>>> 29caa351e28a63d0038263fcf6f55bb5e466b7e3
+>>>>>>> 29caa351e28a63d0038263fcf15f55bb5e466b7e3
         self.upload_button.clicked.connect(self.upload_excel)
         self.chart_button.clicked.connect(self.show_scatter_plot)
         self.table = QTableWidget(self.central_widget)
@@ -303,7 +303,7 @@ class MainWindow(QMainWindow):
         self.addDockWidget(Qt.RightDockWidgetArea, self.scatter_plot_dock)
 
         self.central_splitter.addWidget(self.right_widget)
->>>>>>> 29caa351e28a63d0038263fcf6f55bb5e466b7e3
+>>>>>>> 29caa351e28a63d0038263fcf15f55bb5e466b7e3
 
         self.filename = None
         self.df = None
@@ -325,7 +325,7 @@ class MainWindow(QMainWindow):
             ]
         )
 
->>>>>>> 29caa351e28a63d0038263fcf6f55bb5e466b7e3
+>>>>>>> 29caa351e28a63d0038263fcf15f55bb5e466b7e3
     def upload_excel(self):
         options = QFileDialog.Options()
         options |= QFileDialog.ReadOnly
@@ -386,7 +386,7 @@ class MainWindow(QMainWindow):
         if isinstance(value, int):
             return str(value)
         elif isinstance(value, float):
-            return "{:.6f}".format(value)
+            return "{:.15f}".format(value)
         else:
             return str(value)
 
@@ -552,7 +552,7 @@ class MainWindow(QMainWindow):
 
         # Y값 업데이트
         for row, y_value in enumerate(updated_y_values):
-            item = QTableWidgetItem("{:.6f}".format(y_value))
+            item = QTableWidgetItem("{:.15f}".format(y_value))
             self.table.setItem(row, selected_col_index, item)
 
             # 테이블 크기 조정
