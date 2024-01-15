@@ -51,7 +51,7 @@ for i in data_values:
 # 데이터프레임 생성
 data_df = pd.DataFrame(data_values)
 data_df = data_df.transpose()
-
+print(data_df)
 # 데이터프레임을 4개씩 잘라서 리스트에 저장
 num_columns = len(column_names)
 total_columns = len(data_df[0])
