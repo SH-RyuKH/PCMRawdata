@@ -671,7 +671,7 @@ class MainWindow(QMainWindow):
         ax.scatter(x_values, avg_data["AVG"], marker="o", s=100)
 
         ax.set_xticks(x_values)
-        ax.set_xticklabels(avg_data["Alphabet"])
+        ax.set_xticklabels(avg_data["Slot"])
         ax.set_xlabel("공정 조건")
         ax.set_ylabel(selected_column + " AVG")
         ax.set_title(f"{selected_column} - AVG Chart")
