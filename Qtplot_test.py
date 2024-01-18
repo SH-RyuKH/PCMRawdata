@@ -721,6 +721,7 @@ class MainWindow(QMainWindow):
         group_labels = []
         col_count = {}
 
+<<<<<<< HEAD:Qtplot_test.py
         for value in df.iloc[:, 0]:
             if value in col_count:
                 col_count[value] += 1
@@ -765,6 +766,13 @@ class MainWindow(QMainWindow):
 
         # 범례 추가
         ax.legend()
+=======
+        ax.set_xticks(x_values)
+        ax.set_xticklabels(avg_data["Slot"])
+        ax.set_xlabel("공정 조건")
+        ax.set_ylabel(selected_column + " AVG")
+        ax.set_title(f"{selected_column} - AVG Chart")
+>>>>>>> 19d3cedaf3b5aa2b999462fa6e7aeea68594f843:Qtplot test.py
 
         # 차트를 보여주기
         plt.show()
