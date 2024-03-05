@@ -26,211 +26,11 @@ from PyQt5.QtWidgets import (
     QSizePolicy,
     QVBoxLayout,
     QPushButton,
-    QDockWidget,
-    QGridLayout,
+    QDialog,
+    QAbstractItemView,
     QHBoxLayout,
 )
 import pyqtgraph as pg
-
-
-class ScatterPlotWindow(QWidget):
-    dataUpdated = pyqtSignal(str, list)
-
-    def __init__(self, column_data, raw_data_window, selected_column_name):
-        super().__init__()
-
-        self.setWindowTitle("이상치 제거")
-        self.setGeometry(1700, 100, 1200, 1200)
-
-        # 데이터를 유지하기 위한 멤버 변수 추가
-        self.column_data = column_data
-        self.selected_column_name = selected_column_name
-
-        # raw_data_window 멤버 변수 추가
-        self.raw_data_window = raw_data_window
-        layout = QVBoxLayout(self)
-
-        # 그래프 위젯 생성
-        self.plot_widget = pg.PlotWidget(self)
-        layout.addWidget(self.plot_widget)
-
-        # scatter 그래프 생성
-        self.scatter_plot = self.plot_widget.plot(
-            x=list(range(len(column_data))),
-            y=column_data,
-            pen=None,
-            symbol="o",
-            symbolSize=10,
-        )
-
-        # 그래프 클릭 이벤트 연결
-        self.plot_widget.scene().sigMouseClicked.connect(self.onMouseClicked)
-
-        # 선택한 칼럼의 이름을 표시할 레이블 추가
-        self.selected_column_label = QLabel(
-            f"선택한 칼럼: {self.selected_column_name}", self
-        )
-        layout.addWidget(self.selected_column_label)
-
-        # 선택된 좌표의 X 및 Y 값을 표시할 레이블 추가
-        self.selected_coordinates_label = QLabel("선택한 데이터: X: ?  Y: ?", self)
-        layout.addWidget(self.selected_coordinates_label)
-
-        # 모든 데이터의 목록을 표시할 목록 위젯 추가
-        self.data_list_widget = QListWidget(self)
-        self.data_list_widget.itemDoubleClicked.connect(self.handle_item_double_clicked)
-        layout.addWidget(self.data_list_widget)
-
-        # "데이터 삭제" 버튼 추가
-        self.delete_data_button = QPushButton("데이터 삭제", self)
-        self.delete_data_button.setFixedSize(150, 30)
-        self.delete_data_button.clicked.connect(self.delete_selected_data)
-        layout.addWidget(self.delete_data_button)
-
-        # "데이터 적용" 버튼 추가
-        self.update_data_button = QPushButton("데이터 적용", self)
-        self.update_data_button.setFixedSize(150, 30)
-        self.update_data_button.clicked.connect(
-            lambda: self.update_data_scatterPlot(
-                selected_column_name, column_data, raw_data_window
-            )
-        )
-        layout.addWidget(self.update_data_button)
-
-        # 창 설정
-        self.data = {"x": list(range(len(column_data))), "y": column_data}
-
-        self.selected_point_index = None
-        self.update_data_list()
-
-    def update_data_scatterPlot(
-        self, selected_column_name, column_data, raw_data_window
-    ):
-        # 선택한 칼럼의 이름 및 현재 Y값 가져오기
-        selected_column_name = selected_column_name
-        updated_y_values = column_data
-
-        # 데이터 업데이트
-        self.column_data = updated_y_values
-        self.selected_column_name = selected_column_name
-
-        # MainWindow에 데이터 업데이트 알리기
-        self.dataUpdated.emit(selected_column_name, updated_y_values)
-
-        self.close()
-
-    def handle_item_double_clicked(self, item):
-        # 데이터 목록에서 더블 클릭한 항목의 인덱스 가져오기
-        selected_index = self.data_list_widget.row(item)
-
-        # 선택한 데이터의 좌표 표시
-        x_value = self.data["x"][selected_index]
-        y_value = self.data["y"][selected_index]
-        self.selected_coordinates_label.setText(
-            f"선택한 데이터: X: {x_value:.15f}  Y: {y_value:.15f}"
-        )
-
-    def closeEvent(self, event):
-        # 창이 닫힐 때 데이터를 저장
-        self.save_data()
-
-    def save_data(self):
-        # 데이터를 ScatterPlotWindow의 멤버 변수에 저장
-        self.raw_data_window.set_scatter_plot_data(
-            self.selected_column_name, self.column_data
-        )
-
-    def onMouseClicked(self, event):
-        pos = event.scenePos()
-        pos_item = self.plot_widget.plotItem.vb.mapSceneToView(pos)
-
-        # Scatter 그래프에서 가장 가까운 점 찾기
-        valid_data_indices = [
-            i for i, y in enumerate(self.data["y"]) if not np.isnan(y)
-        ]
-        distances = [
-            (
-                (pos_item.x() - self.data["x"][i]) ** 2
-                + (pos_item.y() - self.data["y"][i]) ** 2
-            )
-            ** 0.5
-            for i in valid_data_indices
-        ]
-
-        if distances:
-            min_distance = min(distances)
-            min_index = valid_data_indices[distances.index(min_distance)]
-
-            # 가장 가까운 점의 좌표 표시
-            x_value = self.data["x"][min_index]
-            y_value = self.data["y"][min_index]
-            self.selected_coordinates_label.setText(
-                f"선택한 데이터: X: {x_value:.15f}  Y: {y_value:.15f}"
-            )
-
-            # 현재 클릭한 점 하이라이트
-            current_item = self.data_list_widget.item(min_index)
-
-            # 이전에 클릭한 점의 스타일 초기화 (기본 스타일)
-            for i in range(self.data_list_widget.count()):
-                item = self.data_list_widget.item(i)
-                item.setSelected(False)
-
-            # 현재 클릭한 점 스타일 변경
-            current_item.setSelected(True)
-
-            # 선택한 데이터의 인덱스 저장
-            self.selected_point_index = min_index
-        else:
-            # No valid data points to consider
-            self.selected_coordinates_label.setText("선택한 데이터: X: ?  Y: ?")
-            self.selected_point_index = None
-
-    def update_data_list(self):
-        # 목록을 지우고 다시 추가
-        self.data_list_widget.clear()
-        for x, y in zip(self.data["x"], self.data["y"]):
-            item = QListWidgetItem(f"X: {x:.15f}  Y: {y:.15f}")
-            self.data_list_widget.addItem(item)
-
-    def delete_selected_data(self):
-        if (
-            self.selected_point_index is not None
-            or self.data_list_widget.currentItem() is not None
-        ):
-            # 선택한 데이터의 y 값을 NaN으로 만들기
-            if self.selected_point_index is not None:
-                self.data["y"][self.selected_point_index] = np.nan
-            elif self.data_list_widget.currentItem() is not None:
-                # 데이터 목록에서 선택한 항목의 인덱스 가져오기
-                selected_index = self.data_list_widget.currentRow()
-                self.data["y"][selected_index] = np.nan
-
-            # 그래프 업데이트
-            self.scatter_plot.setData(x=self.data["x"], y=self.data["y"])
-
-            # 선택한 데이터의 인덱스 초기화
-            self.selected_point_index = None
-
-            # 데이터 목록 업데이트
-            self.update_data_list()
-
-            # 선택한 데이터의 좌표 표시 초기화
-            self.selected_coordinates_label.setText("선택한 데이터: X: ?  Y: ?")
-
-    def update_data(self):
-        # Scatter Plot 창에서 PCM Raw Data 창의 데이터 업데이트 호출
-        self.raw_data_window.update_data()
-
-        # 업데이트된 데이터를 가져와서 그래프와 데이터 목록 업데이트
-        column_data = self.raw_data_window.get_selected_column_data()
-        self.scatter_plot.setData(x=list(range(len(column_data))), y=column_data)
-        self.data = {"x": list(range(len(column_data))), "y": column_data}
-        self.update_data_list()
-
-    def get_saved_data(self):
-        # ScatterPlotWindow의 데이터를 가져오는 메서드
-        return self.selected_column_name, self.column_data
 
 
 class MainWindow(QMainWindow):
@@ -253,19 +53,20 @@ class MainWindow(QMainWindow):
         # 버튼 및 테이블 등을 추가
         self.label = QLabel("선택된 파일 없음", self.central_widget)
         self.upload_button = QPushButton("Excel 업로드", self.central_widget)
-        self.upload_button.setFixedSize(120, 30)
+        self.upload_button.setFixedSize(150, 30)
 
         # ComboBox 생성 및 초기화
         self.item_column_combobox = QComboBox(self.central_widget)
         self.item_column_combobox.addItem("선택된 열 없음")
+        self.item_column_combobox.setFixedSize(230, 30)
         self.col_chart_button = QPushButton("차트", self.central_widget)
-        self.col_chart_button.setFixedSize(120, 30)
+        self.col_chart_button.setFixedSize(150, 30)
 
         self.value_delete_button = QPushButton("이상치 제거", self.central_widget)
-        self.value_delete_button.setFixedSize(120, 30)
+        self.value_delete_button.setFixedSize(150, 30)
 
         self.modify_condition = QPushButton("공정조건 입력", self.central_widget)
-        self.modify_condition.setFixedSize(120, 30)
+        self.modify_condition.setFixedSize(150, 30)
         # 수평 스페이서 추가
         spacer_item = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
 
@@ -480,7 +281,9 @@ class MainWindow(QMainWindow):
         if selected_item is not None:
             selected_row = selected_item.row()
             selected_col = selected_item.column()
-            selected_column_name = self.df.columns[selected_col]  # 선택한 칼럼의 이름 가져오기
+            selected_column_name = self.df.columns[
+                selected_col
+            ]  # 선택한 칼럼의 이름 가져오기
 
             column_data = self.df.iloc[:, selected_col].tolist()
 
@@ -530,24 +333,23 @@ class MainWindow(QMainWindow):
         return []
 
     def modify_cond(self):
-        # 현재 선택된 데이터를 가져옴
-        selected_item = self.table.currentItem()
+        # 선택된 데이터의 현재 값을 가져옴
+        current_value = self.df.iloc[:, 0]
 
-        if selected_item is not None:
-            selected_row = selected_item.row()
+        # ModifyCondDialog 생성 및 초기화
+        dialog = ModifyCondDialog(self)
+        dialog.set_table_data(self.df)
 
-            # 선택된 데이터의 현재 값을 가져옴
-            current_value = self.df.iloc[selected_row, 0]
-
-            # 텍스트 입력 다이얼로그를 통해 새로운 값을 받음
-            new_condition_value, ok = QInputDialog.getText(self, "공정조건 입력", "새로운 값:")
-
-            if ok:
+        # 다이얼로그 실행 및 결과 값 확인
+        if dialog.exec_():
+            new_value = dialog.result()
+            if new_value is not None:
                 # DataFrame 및 테이블 업데이트
-                self.update_cond_values(current_value, new_condition_value)
+                self.update_cond_values(current_value, new_value)
                 self.update_table()
 
     def update_cond_values(self, current_value, new_value):
+        # 기존 DataFrame의 첫 번째 열 값 업데이트
         self.df.iloc[:, 0] = self.df.iloc[:, 0].apply(
             lambda x: new_value if x == current_value else x
         )
@@ -781,6 +583,241 @@ class MainWindow(QMainWindow):
 
         # 선택한 칼럼의 데이터로 차트 그리기
         self.plot_scatter_chart(selected_column, self.df)
+
+
+class ScatterPlotWindow(QWidget):
+    dataUpdated = pyqtSignal(str, list)
+
+    def __init__(self, column_data, raw_data_window, selected_column_name):
+        super().__init__()
+
+        self.setWindowTitle("이상치 제거")
+        self.setGeometry(1700, 100, 1200, 1200)
+
+        # 데이터를 유지하기 위한 멤버 변수 추가
+        self.column_data = column_data
+        self.selected_column_name = selected_column_name
+
+        # raw_data_window 멤버 변수 추가
+        self.raw_data_window = raw_data_window
+        layout = QVBoxLayout(self)
+
+        # 그래프 위젯 생성
+        self.plot_widget = pg.PlotWidget(self)
+        layout.addWidget(self.plot_widget)
+
+        # scatter 그래프 생성
+        self.scatter_plot = self.plot_widget.plot(
+            x=list(range(len(column_data))),
+            y=column_data,
+            pen=None,
+            symbol="o",
+            symbolSize=10,
+        )
+
+        # 그래프 클릭 이벤트 연결
+        self.plot_widget.scene().sigMouseClicked.connect(self.onMouseClicked)
+
+        # 선택한 칼럼의 이름을 표시할 레이블 추가
+        self.selected_column_label = QLabel(
+            f"선택한 칼럼: {self.selected_column_name}", self
+        )
+        layout.addWidget(self.selected_column_label)
+
+        # 선택된 좌표의 X 및 Y 값을 표시할 레이블 추가
+        self.selected_coordinates_label = QLabel("선택한 데이터: X: ?  Y: ?", self)
+        layout.addWidget(self.selected_coordinates_label)
+
+        # 모든 데이터의 목록을 표시할 목록 위젯 추가
+        self.data_list_widget = QListWidget(self)
+        self.data_list_widget.itemDoubleClicked.connect(self.handle_item_double_clicked)
+        layout.addWidget(self.data_list_widget)
+
+        # "데이터 삭제" 버튼 추가
+        self.delete_data_button = QPushButton("데이터 삭제", self)
+        self.delete_data_button.setFixedSize(150, 30)
+        self.delete_data_button.clicked.connect(self.delete_selected_data)
+        layout.addWidget(self.delete_data_button)
+
+        # "데이터 적용" 버튼 추가
+        self.update_data_button = QPushButton("데이터 적용", self)
+        self.update_data_button.setFixedSize(150, 30)
+        self.update_data_button.clicked.connect(
+            lambda: self.update_data_scatterPlot(
+                selected_column_name, column_data, raw_data_window
+            )
+        )
+        layout.addWidget(self.update_data_button)
+
+        # 창 설정
+        self.data = {"x": list(range(len(column_data))), "y": column_data}
+
+        self.selected_point_index = None
+        self.update_data_list()
+
+    def update_data_scatterPlot(
+        self, selected_column_name, column_data, raw_data_window
+    ):
+        # 선택한 칼럼의 이름 및 현재 Y값 가져오기
+        selected_column_name = selected_column_name
+        updated_y_values = column_data
+
+        # 데이터 업데이트
+        self.column_data = updated_y_values
+        self.selected_column_name = selected_column_name
+
+        # MainWindow에 데이터 업데이트 알리기
+        self.dataUpdated.emit(selected_column_name, updated_y_values)
+
+        self.close()
+
+    def handle_item_double_clicked(self, item):
+        # 데이터 목록에서 더블 클릭한 항목의 인덱스 가져오기
+        selected_index = self.data_list_widget.row(item)
+
+        # 선택한 데이터의 좌표 표시
+        x_value = self.data["x"][selected_index]
+        y_value = self.data["y"][selected_index]
+        self.selected_coordinates_label.setText(
+            f"선택한 데이터: X: {x_value:.15f}  Y: {y_value:.15f}"
+        )
+
+    def closeEvent(self, event):
+        # 창이 닫힐 때 데이터를 저장
+        self.save_data()
+
+    def save_data(self):
+        # 데이터를 ScatterPlotWindow의 멤버 변수에 저장
+        self.raw_data_window.set_scatter_plot_data(
+            self.selected_column_name, self.column_data
+        )
+
+    def onMouseClicked(self, event):
+        pos = event.scenePos()
+        pos_item = self.plot_widget.plotItem.vb.mapSceneToView(pos)
+
+        # Scatter 그래프에서 가장 가까운 점 찾기
+        valid_data_indices = [
+            i for i, y in enumerate(self.data["y"]) if not np.isnan(y)
+        ]
+        distances = [
+            (
+                (pos_item.x() - self.data["x"][i]) ** 2
+                + (pos_item.y() - self.data["y"][i]) ** 2
+            )
+            ** 0.5
+            for i in valid_data_indices
+        ]
+
+        if distances:
+            min_distance = min(distances)
+            min_index = valid_data_indices[distances.index(min_distance)]
+
+            # 가장 가까운 점의 좌표 표시
+            x_value = self.data["x"][min_index]
+            y_value = self.data["y"][min_index]
+            self.selected_coordinates_label.setText(
+                f"선택한 데이터: X: {x_value:.15f}  Y: {y_value:.15f}"
+            )
+
+            # 현재 클릭한 점 하이라이트
+            current_item = self.data_list_widget.item(min_index)
+
+            # 이전에 클릭한 점의 스타일 초기화 (기본 스타일)
+            for i in range(self.data_list_widget.count()):
+                item = self.data_list_widget.item(i)
+                item.setSelected(False)
+
+            # 현재 클릭한 점 스타일 변경
+            current_item.setSelected(True)
+
+            # 선택한 데이터의 인덱스 저장
+            self.selected_point_index = min_index
+        else:
+            # No valid data points to consider
+            self.selected_coordinates_label.setText("선택한 데이터: X: ?  Y: ?")
+            self.selected_point_index = None
+
+    def update_data_list(self):
+        # 목록을 지우고 다시 추가
+        self.data_list_widget.clear()
+        for x, y in zip(self.data["x"], self.data["y"]):
+            item = QListWidgetItem(f"X: {x:.15f}  Y: {y:.15f}")
+            self.data_list_widget.addItem(item)
+
+    def delete_selected_data(self):
+        if (
+            self.selected_point_index is not None
+            or self.data_list_widget.currentItem() is not None
+        ):
+            # 선택한 데이터의 y 값을 NaN으로 만들기
+            if self.selected_point_index is not None:
+                self.data["y"][self.selected_point_index] = np.nan
+            elif self.data_list_widget.currentItem() is not None:
+                # 데이터 목록에서 선택한 항목의 인덱스 가져오기
+                selected_index = self.data_list_widget.currentRow()
+                self.data["y"][selected_index] = np.nan
+
+            # 그래프 업데이트
+            self.scatter_plot.setData(x=self.data["x"], y=self.data["y"])
+
+            # 선택한 데이터의 인덱스 초기화
+            self.selected_point_index = None
+
+            # 데이터 목록 업데이트
+            self.update_data_list()
+
+            # 선택한 데이터의 좌표 표시 초기화
+            self.selected_coordinates_label.setText("선택한 데이터: X: ?  Y: ?")
+
+    def update_data(self):
+        # Scatter Plot 창에서 PCM Raw Data 창의 데이터 업데이트 호출
+        self.raw_data_window.update_data()
+
+        # 업데이트된 데이터를 가져와서 그래프와 데이터 목록 업데이트
+        column_data = self.raw_data_window.get_selected_column_data()
+        self.scatter_plot.setData(x=list(range(len(column_data))), y=column_data)
+        self.data = {"x": list(range(len(column_data))), "y": column_data}
+        self.update_data_list()
+
+    def get_saved_data(self):
+        # ScatterPlotWindow의 데이터를 가져오는 메서드
+        return self.selected_column_name, self.column_data
+
+
+class ModifyCondDialog(QDialog):
+    def __init__(self, parent=None):
+        super(ModifyCondDialog, self).__init__(parent)
+
+        self.setWindowTitle("Modify Condition")
+        self.setGeometry(1700, 100, 800, 1200)
+        self.layout = QVBoxLayout()
+
+        # 데이터프레임을 보여줄 테이블 위젯 생성
+        self.table_widget = QTableWidget(self)
+        self.layout.addWidget(self.table_widget)
+
+        # 업데이트 버튼 생성
+        self.update_button = QPushButton("Update", self)
+        self.layout.addWidget(self.update_button)
+        self.update_button.clicked.connect(self.update_values)
+
+        self.setLayout(self.layout)
+
+    def set_table_data(self, df):
+        # 데이터프레임을 테이블 위젯에 표시
+        self.table_widget.setRowCount(df.shape[0])
+        self.table_widget.setColumnCount(2)
+        for i in range(df.shape[0]):
+            item = QTableWidgetItem(str(df.iloc[i, 0]))
+            self.table_widget.setItem(i, 0, item)
+
+        self.table_widget.setSelectionMode(QAbstractItemView.MultiSelection)
+
+    def update_values(self):
+        # 업데이트 버튼 클릭 시, 새로운 값을 가져와서 부모 창에 전달
+        new_value = self.new_value_input.text()
+        self.accept(new_value)
 
 
 if __name__ == "__main__":
