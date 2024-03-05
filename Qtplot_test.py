@@ -14,13 +14,14 @@ from PyQt5.QtWidgets import (
     QTableWidget,
     QTableWidgetItem,
     QInputDialog,
-    QMessageBox,
     QListWidget,
     QListWidgetItem,
     QComboBox,
+    QAction,
+    QShortcut,
 )
-from PyQt5.QtGui import QPainter
-from PyQt5.QtCore import pyqtSignal
+from PyQt5.QtGui import QPainter, QPen, QKeySequence
+from PyQt5.QtCore import pyqtSignal, Qt
 from PyQt5.QtWidgets import (
     QSpacerItem,
     QSizePolicy,
@@ -31,6 +32,7 @@ from PyQt5.QtWidgets import (
     QHBoxLayout,
 )
 import pyqtgraph as pg
+from PyQt5.QtWidgets import QLineEdit
 
 
 class MainWindow(QMainWindow):
@@ -337,16 +339,18 @@ class MainWindow(QMainWindow):
         current_value = self.df.iloc[:, 0]
 
         # ModifyCondDialog 생성 및 초기화
-        dialog = ModifyCondDialog(self)
-        dialog.set_table_data(self.df)
+        self.dialog = ModifyCondDialog(self)
+        self.dialog.set_table_data(self.df)
+        self.dialog.dataUpdatedCond.connect(self.handle_dialog_data_updated)
+        self.dialog.exec_()
 
-        # 다이얼로그 실행 및 결과 값 확인
-        if dialog.exec_():
-            new_value = dialog.result()
-            if new_value is not None:
-                # DataFrame 및 테이블 업데이트
-                self.update_cond_values(current_value, new_value)
-                self.update_table()
+    def handle_dialog_data_updated(self, updated_y_values):
+        # table의 첫 번째 열 값 업데이트 (updated_y_values값이 공백이면 업데이트 안함)
+
+        for i in range(len(updated_y_values)):
+            if updated_y_values[i] != "":
+                self.df.iloc[i, 0] = updated_y_values[i]
+                self.table.item(i, 0).setText(updated_y_values[i])
 
     def update_cond_values(self, current_value, new_value):
         # 기존 DataFrame의 첫 번째 열 값 업데이트
@@ -531,6 +535,7 @@ class MainWindow(QMainWindow):
 
             group_labels.append(f"{value}-{col_count[value]}")
 
+        group_labels.sort()
         x_values = group_labels
 
         # y 값 설정
@@ -538,17 +543,25 @@ class MainWindow(QMainWindow):
 
         # 색상 설정
         unique_prefixes = np.unique([label.split("-")[0] for label in x_values])
+        unique_prefixes.sort()
+
         colors = plt.cm.get_cmap("Paired")
 
-        # 점 차트 그리기
+        # 차트 그리기
         for i, prefix in enumerate(unique_prefixes):
-            mask = np.array([label.startswith(prefix) for label in x_values])
-            ax.scatter(
+            prefix_str = str(prefix)
+            mask = np.array([label.split("-")[0] == prefix_str for label in x_values])
+            group_y_values = np.array(y_values)[mask]
+            avg = np.mean(group_y_values)
+            std = np.std(group_y_values)
+            ax.plot(
                 np.array(x_values)[mask],
-                np.array(y_values)[mask],
-                label=prefix,
+                group_y_values,
+                label=f"{prefix_str} (avg: {avg:.8f}, std: {std:.8f})",
                 color=colors(i),
             )
+
+        unique_prefixes = list(map(str, unique_prefixes))
 
         # x 라벨 설정
         ax.set_xticklabels(x_values, rotation=90, ha="right", fontsize=8)
@@ -556,12 +569,21 @@ class MainWindow(QMainWindow):
         ax.set_ylabel(selected_column)
         ax.set_title(f"{selected_column} Chart")
 
-        new_condition_value, ok = QInputDialog.getText(self, "Target", "Target 입력:")
+        # Target, USL, LSL 값을 입력받음
+        target_value, ok = QInputDialog.getText(self, "Target", "Target 입력:")
+        usl_value, ok = QInputDialog.getText(self, "USL", "USL 입력:")
+        lsl_value, ok = QInputDialog.getText(self, "LSL", "LSL 입력:")
+
         if ok:
             try:
-                target_value = float(new_condition_value)
-                # 가운데 수평선 추가
+                target_value = float(target_value)
+                usl_value = float(usl_value)
+                lsl_value = float(lsl_value)
+
+                # 수평선 추가
                 ax.axhline(y=target_value, color="red", linestyle="--", label="Target")
+                ax.axhline(y=usl_value, color="green", linestyle="--", label="USL")
+                ax.axhline(y=lsl_value, color="blue", linestyle="--", label="LSL")
             except ValueError:
                 print("숫자를 입력하세요.")
 
@@ -786,6 +808,8 @@ class ScatterPlotWindow(QWidget):
 
 
 class ModifyCondDialog(QDialog):
+    dataUpdatedCond = pyqtSignal(list)
+
     def __init__(self, parent=None):
         super(ModifyCondDialog, self).__init__(parent)
 
@@ -800,7 +824,17 @@ class ModifyCondDialog(QDialog):
         # 업데이트 버튼 생성
         self.update_button = QPushButton("Update", self)
         self.layout.addWidget(self.update_button)
-        self.update_button.clicked.connect(self.update_values)
+        self.update_button.clicked.connect(self.update_values_MainWindow)
+
+        # Ctrl + V 키 조합을 감지하는 단축키 생성
+        shortcut = QShortcut(QKeySequence("Ctrl+V"), self.table_widget)
+
+        # 단축키가 감지되면 paste_clipboard_to_table 메서드 호출
+        shortcut.activated.connect(self.paste_clipboard_to_table)
+        self.table_widget.setContextMenuPolicy(Qt.ActionsContextMenu)
+        paste_action = QAction("Paste", self)
+        paste_action.triggered.connect(self.paste_clipboard_to_table)
+        self.table_widget.addAction(paste_action)
 
         self.setLayout(self.layout)
 
@@ -812,12 +846,30 @@ class ModifyCondDialog(QDialog):
             item = QTableWidgetItem(str(df.iloc[i, 0]))
             self.table_widget.setItem(i, 0, item)
 
-        self.table_widget.setSelectionMode(QAbstractItemView.MultiSelection)
+    def paste_clipboard_to_table(self):
+        clipboard = QApplication.clipboard()
+        data = clipboard.text().rstrip("\n").split("\n")
+        start_row = self.table_widget.currentRow()
+        start_col = self.table_widget.currentColumn()
+        for i, row in enumerate(data):
+            items = row.split("\t")
+            for j, item in enumerate(items):
+                self.table_widget.setItem(
+                    start_row + i, start_col + j, QTableWidgetItem(item)
+                )
 
-    def update_values(self):
-        # 업데이트 버튼 클릭 시, 새로운 값을 가져와서 부모 창에 전달
-        new_value = self.new_value_input.text()
-        self.accept(new_value)
+    def update_values_MainWindow(self):  # MainWindow의 데이터 업데이트
+        # updated_y_values에 두번째 칼럼 값들을 저장
+        updated_y_values = []
+        for i in range(self.table_widget.rowCount()):
+            item = self.table_widget.item(i, 1)
+            if item is not None:
+                updated_y_values.append(item.text())
+
+        # MainWindow에 데이터 업데이트 알리기
+        self.dataUpdatedCond.emit(updated_y_values)
+
+        self.close()
 
 
 if __name__ == "__main__":
